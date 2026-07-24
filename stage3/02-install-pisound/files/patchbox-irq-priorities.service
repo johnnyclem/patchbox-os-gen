@@ -1,0 +1,11 @@
+[Unit]
+Description=Patchbox: raise scheduling priority of audio/USB IRQ threads
+After=sysinit.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/patchbox-irq-priorities.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

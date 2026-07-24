@@ -2,3 +2,32 @@ IMG_NAME="Patchbox"
 FIRST_USER_NAME="patch"
 FIRST_USER_PASS="blokaslabs"
 HOSTNAME="patchbox"
+
+# SSH is a documented part of the Patchbox headless workflow (wifi hotspot +
+# ssh for initial setup). This restores that intended behavior via the
+# proper pi-gen mechanism (stage2 `systemctl enable ssh` gated on
+# ENABLE_SSH); a previous `touch .../boot/ssh` marker-file approach in
+# stage3 targeted the wrong filesystem on bookworm and was a silent no-op,
+# so SSH was actually shipping disabled. See README "Security & latency
+# tuning" for how to harden or disable this.
+ENABLE_SSH="${ENABLE_SSH:-1}"
+
+# Toggles for background services that run by default (product behavior
+# preserved). See README "Security & latency tuning".
+ENABLE_WIFI_HOTSPOT="${ENABLE_WIFI_HOTSPOT:-1}"
+ENABLE_VNC="${ENABLE_VNC:-1}"
+ENABLE_TELEMETRY="${ENABLE_TELEMETRY:-1}"
+
+# Pisound driver git ref checked out during the build. Defaults to the
+# moving `patchbox` branch (prior behavior); pin to a tag/SHA for
+# reproducible builds.
+PISOUND_GIT_REF="${PISOUND_GIT_REF:-patchbox}"
+
+# WiFi hotspot WPA2 passphrase. Defaults to the documented onboarding
+# passphrase; override for hardened/production builds.
+HOTSPOT_PASSPHRASE="${HOTSPOT_PASSPHRASE:-blokaslabs}"
+
+# Force a password change at first login for FIRST_USER_NAME. Defaults on
+# since FIRST_USER_PASS above is a well-known default; set to 0 to restore
+# the previous unforced behavior.
+ENABLE_FIRST_LOGIN_PASSWORD_CHANGE="${ENABLE_FIRST_LOGIN_PASSWORD_CHANGE:-1}"

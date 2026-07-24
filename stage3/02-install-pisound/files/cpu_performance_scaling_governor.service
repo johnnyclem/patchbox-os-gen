@@ -1,9 +1,10 @@
 [Unit]
-Description=CPU scaling governor initializer to `performance`
+Description=Set CPU scaling governor to `performance` on all cpufreq policies
+ConditionPathExistsGlob=/sys/devices/system/cpu/cpufreq/policy*
 
 [Service]
 Type=oneshot
-ExecStart=/bin/sh -c "echo performance > /sys/devices/system/cpu/cpu0/cpufreq/scaling_governor"
+ExecStart=/bin/sh -c 'for p in /sys/devices/system/cpu/cpufreq/policy*/scaling_governor; do echo performance > "$$p"; done'
 
 [Install]
 WantedBy=multi-user.target

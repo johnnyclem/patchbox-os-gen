@@ -36,6 +36,18 @@ disable_overscan=1
 # Run as fast as firmware / board allows
 arm_boost=1
 
+# --- Patchbox audio/boot tuning ---
+# Skip the rainbow splash for a faster boot to JACK.
+disable_splash=1
+# Run at max clocks for the first 60s of boot (faster boot, avoids
+# DVFS-related clock transitions while JACK/pisound come up).
+initial_turbo=60
+# Optional: pin firmware clocks at maximum permanently instead of relying on
+# the `performance` cpufreq governor + initial_turbo above. Increases power
+# draw/heat; uncomment only if you still see clock-transition-related xruns.
+# Do not combine with over_voltage (voids warranty bit).
+#force_turbo=1
+
 [cm4]
 # Enable host mode on the 2711 built-in XHCI USB controller.
 # This line should be removed if the legacy DWC2 controller is required

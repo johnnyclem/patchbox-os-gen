@@ -232,6 +232,15 @@ export WPA_COUNTRY
 export ENABLE_SSH="${ENABLE_SSH:-0}"
 export PUBKEY_ONLY_SSH="${PUBKEY_ONLY_SSH:-0}"
 
+# Patchbox-specific toggles for background services and product defaults.
+# Defaults preserve existing product behavior; see README for hardening.
+export ENABLE_WIFI_HOTSPOT="${ENABLE_WIFI_HOTSPOT:-1}"
+export ENABLE_VNC="${ENABLE_VNC:-1}"
+export ENABLE_TELEMETRY="${ENABLE_TELEMETRY:-1}"
+export PISOUND_GIT_REF="${PISOUND_GIT_REF:-patchbox}"
+export HOTSPOT_PASSPHRASE="${HOTSPOT_PASSPHRASE:-blokaslabs}"
+export ENABLE_FIRST_LOGIN_PASSWORD_CHANGE="${ENABLE_FIRST_LOGIN_PASSWORD_CHANGE:-1}"
+
 export LOCALE_DEFAULT="${LOCALE_DEFAULT:-en_GB.UTF-8}"
 
 export KEYBOARD_KEYMAP="${KEYBOARD_KEYMAP:-gb}"

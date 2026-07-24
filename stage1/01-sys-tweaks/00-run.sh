@@ -12,7 +12,14 @@ fi
 if [ -n "${FIRST_USER_PASS}" ]; then
 	echo "${FIRST_USER_NAME}:${FIRST_USER_PASS}" | chpasswd
 fi
-echo "root:root" | chpasswd
+if [ "${ENABLE_FIRST_LOGIN_PASSWORD_CHANGE}" = "1" ]; then
+	chage -d 0 ${FIRST_USER_NAME}
+fi
+# root stays locked (debootstrap default); export-image/05-finalise already
+# locks it again defensively (`usermod --pass='*' root`). Previously this
+# script set a temporary root:root password here, which meant any
+# intermediate/aborted build artifact carried a known root password until
+# the finalise stage ran.
 EOF
 
 
