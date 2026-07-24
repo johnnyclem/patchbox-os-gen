@@ -227,6 +227,38 @@ The following environment variables are supported:
    it from a filesystem that does not support capabilities (like NFS) can cause
    issues. Only enable this if you understand what it is.
 
+ * `ENABLE_WIFI_HOTSPOT` (Default: `1`)
+
+   Enable the `wifi-hotspot` service (Patchbox's default headless-onboarding AP) at boot.
+   Set to `0` for a performance-focused build with the radio off by default.
+
+ * `ENABLE_VNC` (Default: `1`)
+
+   Enable the RealVNC server at boot. Set to `0` to keep it installed but disabled by
+   default (reduces background CPU/network load and remote-access attack surface).
+
+ * `ENABLE_TELEMETRY` (Default: `1`)
+
+   Enable the `blokas-telemetry` service at boot. Set to `0` to keep the package
+   installed but the service disabled by default.
+
+ * `PISOUND_GIT_REF` (Default: `patchbox`)
+
+   Git ref checked out for `/usr/local/pisound` during the build (stage3/02-install-pisound).
+   Defaults to the moving `patchbox` branch; set to a tag or commit SHA for
+   reproducible builds.
+
+ * `HOTSPOT_PASSPHRASE` (Default: `blokaslabs`)
+
+   WPA2 passphrase for the default WiFi hotspot. Override for hardened/production
+   builds; the default matches Patchbox's documented onboarding passphrase.
+
+ * `ENABLE_FIRST_LOGIN_PASSWORD_CHANGE` (Default: `1`)
+
+   Force a password change at first login for `FIRST_USER_NAME`, since
+   `FIRST_USER_PASS` is a well-known default. Set to `0` to restore the
+   previous unforced behavior.
+
  * `STAGE_LIST` (Default: `stage*`)
 
     If set, then instead of working through the numeric stages in order, this list will be followed. For example setting to `"stage0 stage1 mystage stage2"` will run the contents of `mystage` before stage2. Note that quotes are needed around the list. An absolute or relative path can be given for stages outside the pi-gen directory.
@@ -289,6 +321,73 @@ The following process is followed to build images:
 
 It is recommended to examine build.sh for finer details.
 
+
+## Patchbox OS: audio/MIDI latency & security tuning
+
+This fork bakes in a set of low-latency-audio defaults on top of upstream pi-gen:
+
+ * `threadirqs`, `audit=0`, `usbcore.autosuspend=-1` on the kernel cmdline
+   (`stage1/00-boot-files/files/cmdline.txt`).
+ * `disable_splash=1`, `initial_turbo=60` in `config.txt`
+   (`stage1/00-boot-files/files/config.txt`); `force_turbo=1` is present but
+   commented out — enable it only if you still see clock-transition xruns
+   after the above (raises heat/power draw, and must not be combined with
+   `over_voltage`).
+ * Explicit `@audio` realtime limits (`rtprio 95`, `memlock unlimited`,
+   `nice -19`) in `/etc/security/limits.d/95-patchbox-audio.conf`
+   (`stage3/03-install-jack`), in addition to jackd2's own debconf-driven limits.
+ * `vm.swappiness=10` and reduced dirty-writeback ratios via
+   `/etc/sysctl.d/90-patchbox-audio.conf` (`stage3/02-install-pisound`). Swap
+   itself (`dphys-swapfile`, 100 MB) stays enabled as an OOM safety net for
+   512 MB boards — set `CONF_SWAPSIZE=0` in `/etc/dphys-swapfile` post-build
+   if you want it off entirely.
+ * The `performance` cpufreq governor is now applied to every cpufreq
+   policy, not just `cpu0` (`stage3/02-install-pisound/files/cpu_performance_scaling_governor.service`).
+ * A boot-time pass raises the scheduling priority of audio/USB IRQ kernel
+   threads (`patchbox-irq-priorities.service`/`.sh`), pairing with
+   `threadirqs`. Note this only catches interrupts that already exist at
+   boot (onboard audio, Pisound); a hot-plugged USB audio interface's IRQ
+   thread is not automatically re-prioritized after the fact — re-run
+   `/usr/local/sbin/patchbox-irq-priorities.sh` manually or via udev if you
+   need that.
+
+**Not enabled by default, for later/opt-in tuning:**
+
+ * **CPU isolation** (`isolcpus=3 nohz_full=3 rcu_nocbs=3` + `taskset`/`chrt`
+   pinning your DSP process to the isolated core) — biggest worst-case-latency
+   win on 4-core boards, but steals a core from Pd/SuperCollider/JACK's own
+   multi-threading, so it's a manual `cmdline.txt` edit, not a default.
+ * **PREEMPT_RT kernel** — set `RT_KERNEL_VERSION` to an available RT kernel
+   package name (verify with `apt-cache policy <name>` in a chroot first;
+   none is currently pinned in this repo) and `stage3/05-rt-kernel` will
+   install it. Off by default: better worst-case latency, but real
+   driver-compatibility and thermal/throughput risk, and the tuning above
+   already gets most of the win on the stock kernel.
+
+### Security notes
+
+A handful of shipped defaults are deliberate product choices for a
+headless/appliance-style device (default `patch`/`blokaslabs` credentials
+with first-boot user-rename disabled via `export-image/01-user-rename/SKIP`,
+passwordless sudo for `patch`, `Xwrapper` `allowed_users=anybody` to allow
+`startx` over SSH). These are **not** changed by default in this pass, but
+are now parameterized/hardenable:
+
+ * `ENABLE_FIRST_LOGIN_PASSWORD_CHANGE=1` (default) forces a password
+   change at first login given the well-known default password.
+ * `PUBKEY_ONLY_SSH=1` + `PUBKEY_SSH_FIRST_USER=<your key>` disables SSH
+   password auth (upstream pi-gen feature, already available).
+ * `HOTSPOT_PASSPHRASE` lets you set a non-default WiFi passphrase per build.
+ * `ENABLE_VNC=0` / `ENABLE_TELEMETRY=0` / `ENABLE_WIFI_HOTSPOT=0` disable
+   those services outright.
+ * Delete `export-image/01-user-rename/SKIP` to restore the standard
+   Raspberry Pi OS first-boot user-rename wizard.
+
+Two fixes with no product-behavior change: the transient `root:root` password
+previously set in `stage1/01-sys-tweaks` (and always locked again at
+`export-image/05-finalise`) has been removed, and the Blokas/Raspberry Pi
+Foundation apt repositories now use HTTPS instead of HTTP (both endpoints
+verified to serve HTTPS; GPG-signature verification applied either way).
 
 ## Docker Build
 

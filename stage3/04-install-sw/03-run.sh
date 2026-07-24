@@ -1,3 +1,5 @@
+#!/bin/bash -e
+
 # Set up browser.
 on_chroot << EOF
 	update-alternatives --install /usr/bin/x-www-browser x-www-browser /usr/bin/chromium-browser 86
