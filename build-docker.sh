@@ -82,10 +82,18 @@ fi
 # Modify original build-options to allow config file to be mounted in the docker container
 BUILD_OPTS="$(echo "${BUILD_OPTS:-}" | sed -E 's@\-c\s?([^ ]+)@-c /config@')"
 
-# Check the arch of the machine we're running on. If it's 64-bit, use a 32-bit base image instead
+# Check the arch of the machine we're running on.
+# On x86_64, use a 32-bit (i386) base image so setarch linux32 works for armhf
+# debootstrap. On aarch64/arm64 (e.g. Apple Silicon + Colima), use native
+# arm64 debian — scripts/common falls back when setarch linux32 is unavailable,
+# and qemu-user-static handles armhf. Using i386 on arm64 would require nested
+# x86 emulation and is much slower.
 case "$(uname -m)" in
-  x86_64|aarch64)
+  x86_64)
     BASE_IMAGE=i386/debian:bullseye
+    ;;
+  aarch64|arm64)
+    BASE_IMAGE=debian:bullseye
     ;;
   *)
     BASE_IMAGE=debian:bullseye
@@ -103,10 +111,14 @@ else
   DOCKER_CMDLINE_POST=""
 fi
 
-# Check if binfmt_misc is required
+# Check if binfmt_misc is required on the host.
+# Native arm hosts can skip host-side qemu for arm64 guests, but this project
+# still bootstraps armhf (32-bit), so binfmt + qemu-arm must work *inside*
+# the container. Ensure container-side binfmt is registered below.
 binfmt_misc_required=1
 case $(uname -m) in
-  aarch64)
+  aarch64|arm64)
+    # Still need qemu-arm for armhf userland; rely on container setup.
     binfmt_misc_required=0
     ;;
   arm*)
@@ -138,6 +150,15 @@ if [[ "${binfmt_misc_required}" == "1" ]]; then
     sudo bash -c "${reg}" 2>/dev/null || true
   fi
 fi
+
+# On arm64 Docker hosts (Apple Silicon + Colima, etc.), ensure arm/armhf
+# binfmt handlers exist in the kernel before debootstrap runs armhf binaries.
+case $(uname -m) in
+  aarch64|arm64)
+    echo "Ensuring qemu arm/armhf binfmt is registered for armhf rootfs..."
+    ${DOCKER} run --privileged --rm tonistiigi/binfmt --install arm >/dev/null
+    ;;
+esac
 
 trap 'echo "got CTRL+C... please wait 5s" && ${DOCKER} stop -t 5 ${DOCKER_CMDLINE_NAME}' SIGINT SIGTERM
 time ${DOCKER} run \

@@ -18,10 +18,16 @@ python3-picamera2
 python3-pyqt5
 python3-opengl
 
-raspberrypi-ui-mods gnome-themes-standard-data
+# gnome-themes-standard-data conflicts with gnome-themes-extra-data
+# (already installed via 00-packages-nr) on bookworm — use the latter only.
+raspberrypi-ui-mods
 sonic-pi
 pianoteq-standard-trial
-blokas-puredata-patches
+# 1.02-1 depends on pd-gendyflext, which is not in Raspbian bookworm
+# armhf (or current Debian armhf). Pin the last known-good Blokas release
+# and install the remaining Pure Data externals that 1.02 wanted.
+blokas-puredata-patches=1.01-2
+pd-iemlib pd-zexy pd-moonlib pd-ggee pd-creb pd-cyclone
 blokas-telemetry
 patchbox
 patchbox-cli

@@ -3,6 +3,19 @@ log (){
 }
 export -f log
 
+# setarch linux32 is used so debootstrap/chroot of armhf rootfs works under
+# 64-bit x86 hosts (and i386 containers). On aarch64/arm64 kernels the
+# linux32 personality is unavailable ("Invalid argument"), so fall back to
+# plain capsh and rely on qemu-user-static + binfmt for armhf execution.
+run_linux32() {
+	if setarch linux32 true 2>/dev/null; then
+		setarch linux32 "$@"
+	else
+		"$@"
+	fi
+}
+export -f run_linux32
+
 bootstrap(){
 	local BOOTSTRAP_CMD=debootstrap
 	local BOOTSTRAP_ARGS=()
@@ -17,7 +30,7 @@ bootstrap(){
 	BOOTSTRAP_ARGS+=("$@")
 	printf -v BOOTSTRAP_STR '%q ' "${BOOTSTRAP_ARGS[@]}"
 
-	setarch linux32 capsh $CAPSH_ARG -- -c "'${BOOTSTRAP_CMD}' $BOOTSTRAP_STR" || true
+	run_linux32 capsh $CAPSH_ARG -- -c "'${BOOTSTRAP_CMD}' $BOOTSTRAP_STR" || true
 
 	if [ -d "$2/debootstrap" ] && ! rmdir "$2/debootstrap"; then
 		cp "$2/debootstrap/debootstrap.log" "${STAGE_WORK_DIR}"
@@ -94,7 +107,7 @@ on_chroot() {
 		mount -t tmpfs  tmpfs "${ROOTFS_DIR}/tmp"
 	fi
 
-	setarch linux32 capsh $CAPSH_ARG "--chroot=${ROOTFS_DIR}/" -- -e "$@"
+	run_linux32 capsh $CAPSH_ARG "--chroot=${ROOTFS_DIR}/" -- -e "$@"
 }
 export -f on_chroot
 
