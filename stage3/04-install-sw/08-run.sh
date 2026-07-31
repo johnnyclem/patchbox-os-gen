@@ -9,9 +9,9 @@ cp files/pi-greeter.conf "${ROOTFS_DIR}/etc/lightdm/"
 mkdir -p "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/.config/lxpanel/LXDE-pi/panels"
 cp files/lxde-panel "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/.config/lxpanel/LXDE-pi/panels/panel"
 
-# HDMI geometry: only force 1280x720 when NOT using the Waveshare DPI panel
-# (DPI is 640x480 and owns the primary KMS connector).
-if [ "${ENABLE_WAVESHARE_DPI}" != "1" ]; then
+# Default HDMI geometry for non-special displays (720p).
+# Skipped when Waveshare DPI or custom ultrawide stage will own modes.
+if [ "${ENABLE_WAVESHARE_DPI}" != "1" ] && [ "${ENABLE_HDMI_ULTRAWIDE}" != "1" ]; then
 	sed -i -E "s/#?hdmi_group=[0-9]+/hdmi_group=2/" "${ROOTFS_DIR}/boot/firmware/config.txt"
 	sed -i -E "s/#?hdmi_mode=[0-9]+/hdmi_mode=85/" "${ROOTFS_DIR}/boot/firmware/config.txt"
 	sed -i -E "s/#?hdmi_force_hotplug=[0-9]+/hdmi_force_hotplug=1/" "${ROOTFS_DIR}/boot/firmware/config.txt"

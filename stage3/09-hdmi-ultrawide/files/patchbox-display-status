@@ -1,0 +1,38 @@
+#!/bin/bash
+# Display + Pisound quick diagnostics for the ultrawide HDMI stack.
+set -euo pipefail
+
+echo "=== HDMI / ultrawide config ==="
+if [ -f /boot/firmware/config.txt ]; then
+	grep -nE 'hdmi_|dtoverlay=vc4|max_framebuffers' /boot/firmware/config.txt || true
+fi
+echo
+echo "=== cmdline ==="
+cat /boot/firmware/cmdline.txt 2>/dev/null || true
+echo
+echo
+echo "=== DRM connectors ==="
+if [ -d /sys/class/drm ]; then
+	for c in /sys/class/drm/card*-*; do
+		[ -e "$c/status" ] || continue
+		name=$(basename "$c")
+		st=$(cat "$c/status" 2>/dev/null || echo '?')
+		en=$(cat "$c/enabled" 2>/dev/null || echo '?')
+		modes=""
+		[ -f "$c/modes" ] && modes=$(head -5 "$c/modes" | tr '\n' ' ')
+		echo "  $name status=$st enabled=$en modes=[$modes]"
+	done
+fi
+echo
+echo "=== touch / input ==="
+cat /proc/bus/input/devices 2>/dev/null | grep -E 'Name=|Handlers=' | head -50 || true
+echo
+echo "=== audio (expect Pisound) ==="
+aplay -l 2>/dev/null || true
+echo
+amidi -l 2>/dev/null || true
+echo
+echo "=== JACK ==="
+jack_lsp 2>/dev/null | head -30 || echo "(JACK not running)"
+echo
+echo "See ~/DISPLAY-PISOUND.txt"
