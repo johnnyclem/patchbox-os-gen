@@ -1,0 +1,121 @@
+#!/bin/bash
+# On-device repair for a black Waveshare 3.5" DPI panel on Patchbox.
+# Safe to re-run. Requires root.
+set -euo pipefail
+
+if [ "$(id -u)" -ne 0 ]; then
+	echo "Run as root: sudo $0"
+	exit 1
+fi
+
+CFG=/boot/firmware/config.txt
+CMD=/boot/firmware/cmdline.txt
+OVL=/boot/firmware/overlays
+
+if [ ! -f "$CFG" ]; then
+	echo "Missing $CFG — is this Bookworm?"
+	exit 1
+fi
+
+echo "== Installing DTBO overlays (if present in /usr/share or already in overlays) =="
+# Overlays should already be on the image; re-copy from a known path if we ship them
+for f in waveshare-35dpi.dtbo waveshare-touch-35dpi.dtbo vc4-kms-DPI-35inch.dtbo \
+	waveshare-35dpi-3b-4b.dtbo waveshare-35dpi-3b.dtbo waveshare-35dpi-4b.dtbo; do
+	if [ -f "$OVL/$f" ]; then
+		echo "  ok $f"
+	else
+		echo "  MISSING $OVL/$f"
+	fi
+done
+
+echo "== Rewriting display section in config.txt =="
+# Backup once
+cp -a "$CFG" "${CFG}.bak.$(date +%Y%m%d%H%M%S)"
+
+# Drop conflicting / old waveshare lines then append clean block
+TMP=$(mktemp)
+while IFS= read -r line || [ -n "${line:-}" ]; do
+	s="${line#"${line%%[![:space:]]*}"}"
+	case "$s" in
+		dtoverlay=waveshare-35dpi*|dtoverlay=waveshare-touch-35dpi*) continue ;;
+		dtoverlay=vc4-kms-DPI-35inch*|dtoverlay=waveshare-35dpi-3b*|dtoverlay=waveshare-35dpi-4b*) continue ;;
+		dtoverlay=spi0-0cs*|dtoverlay=wm8960-soundcard*|dtoverlay=googlevoicehat*) continue ;;
+		*'--- Waveshare 3.5 DPI'*|*'--- end Waveshare'*) continue ;;
+		dtparam=spi=on) echo "#dtparam=spi=on"; continue ;;
+		dtparam=i2s=on) echo "#dtparam=i2s=on"; continue ;;
+	esac
+	printf '%s\n' "$line"
+done < "$CFG" > "$TMP"
+
+grep -qE '^dtoverlay=vc4-kms-v3d' "$TMP" || echo "dtoverlay=vc4-kms-v3d" >> "$TMP"
+grep -qE '^dtparam=i2c_arm=on' "$TMP" || echo "dtparam=i2c_arm=on" >> "$TMP"
+
+# Ensure max_framebuffers for dual connectors
+if ! grep -qE '^max_framebuffers=' "$TMP"; then
+	echo "max_framebuffers=2" >> "$TMP"
+fi
+
+cat >> "$TMP" <<'EOF'
+
+# --- Waveshare 3.5 DPI LCD (640x480 IPS capacitive) ---
+# Bookworm recipe: https://www.waveshare.com/wiki/3.5inch_DPI_LCD
+dtoverlay=waveshare-35dpi
+dtoverlay=waveshare-touch-35dpi
+# If still black after reboot, try ALSO enabling (uncomment one at a time):
+#dtoverlay=vc4-kms-DPI-35inch
+#dtoverlay=waveshare-35dpi-3b-4b
+#dtoverlay=waveshare-35dpi-4b
+# --- end Waveshare ---
+EOF
+
+cat "$TMP" > "$CFG"
+rm -f "$TMP"
+
+echo "== cmdline.txt: force DPI-1 mode =="
+if [ -f "$CMD" ]; then
+	cp -a "$CMD" "${CMD}.bak.$(date +%Y%m%d%H%M%S)"
+	# Remove prior video=DPI tokens then prepend
+	sed -i -E 's/ *video=DPI-1:[^ ]*//g' "$CMD"
+	# Single line file — prepend video mode
+	if ! grep -q 'video=DPI-1:' "$CMD"; then
+		sed -i 's/^/video=DPI-1:640x480M@60 /' "$CMD"
+	fi
+	echo "  cmdline: $(cat "$CMD")"
+else
+	echo "  WARNING: no $CMD"
+fi
+
+echo "== Force backlight on (GPIO18) =="
+if command -v pinctrl >/dev/null 2>&1; then
+	pinctrl set 18 op dh || true
+	echo "  pinctrl GPIO18 high"
+fi
+for d in /sys/class/backlight/*; do
+	[ -d "$d" ] || continue
+	echo 0 > "$d/bl_power" 2>/dev/null || true
+	if [ -f "$d/max_brightness" ]; then
+		cat "$d/max_brightness" > "$d/brightness" 2>/dev/null || true
+	fi
+	echo "  backlight $(basename "$d") brightness=$(cat "$d/brightness" 2>/dev/null || echo '?')"
+done
+
+# Enable oneshot if present
+if [ -f /usr/lib/systemd/system/waveshare-dpi-backlight.service ] || \
+   [ -f /lib/systemd/system/waveshare-dpi-backlight.service ]; then
+	systemctl enable waveshare-dpi-backlight.service 2>/dev/null || true
+	systemctl start waveshare-dpi-backlight.service 2>/dev/null || true
+fi
+
+echo
+echo "== Diagnostics =="
+ls -la "$OVL"/waveshare*.dtbo 2>/dev/null || echo "MISSING overlays!"
+dmesg | grep -iE 'dpi|waveshare|panel|goodix|backlight|vc4' | tail -30 || true
+echo
+echo "Reboot required for overlay/cmdline changes:"
+echo "  sudo reboot"
+echo
+echo "If still black after reboot:"
+echo "  1) Reseat the HAT fully on all 40 pins (power off first)"
+echo "  2) sudo patchbox-display-status"
+echo "  3) dmesg | grep -i dpi"
+echo "  4) Try Bullseye-style overlays (uncomment in $CFG) then reboot"

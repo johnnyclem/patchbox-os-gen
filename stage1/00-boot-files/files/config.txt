@@ -2,15 +2,14 @@
 # http://rptl.io/configtxt
 # Some settings may impact device functionality. See link above for details
 
-# Uncomment some or all of these to enable the optional hardware interfaces
-# Default appliance target: Waveshare 3.5" DPI 640x480 capacitive on the 40-pin
-# header. DPI muxes most GPIOs — do not enable Inky SPI or RaspiAudio I2S
-# overlays at the same time (stage3/08 configures the DPI stack).
-dtparam=i2c_arm=on
+# Product stack: Pisound on 40-pin + HDMI 1280x400 ultrawide (USB touch).
+# Leave SPI/I2C free for Pisound / optional accessories; no DPI panel.
+
+#dtparam=i2c_arm=on
 #dtparam=i2s=on
 #dtparam=spi=on
 
-# Onboard audio (HDMI / bcm). Preferred when using USB audio with the DPI panel.
+# Onboard audio (HDMI). Pisound provides primary pro audio via its driver.
 dtparam=audio=on
 
 # Additional overlays and parameters are documented
@@ -25,7 +24,7 @@ display_auto_detect=1
 # Automatically load initramfs files, if found
 auto_initramfs=1
 
-# Enable DRM VC4 V3D driver (required for Waveshare Bookworm DPI recipe)
+# Enable DRM VC4 V3D driver
 dtoverlay=vc4-kms-v3d
 max_framebuffers=2
 
@@ -40,16 +39,13 @@ disable_overscan=1
 arm_boost=1
 
 # --- Patchbox audio/boot tuning ---
-# Skip the rainbow splash for a faster boot to JACK.
 disable_splash=1
-# Run at max clocks for the first 60s of boot (faster boot, avoids
-# DVFS-related clock transitions while JACK comes up).
 initial_turbo=60
-# Optional: pin firmware clocks at maximum permanently.
 #force_turbo=1
 
+# HDMI ultrawide geometry is applied by stage3/09-hdmi-ultrawide when enabled.
+
 [cm4]
-# Enable host mode on the 2711 built-in XHCI USB controller.
 otg_mode=1
 
 [all]

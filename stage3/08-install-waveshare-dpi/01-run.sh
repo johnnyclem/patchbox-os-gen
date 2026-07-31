@@ -67,6 +67,10 @@ if ! grep -qE '^dtoverlay=vc4-kms-v3d' "${TMP_CFG}"; then
 	echo "dtoverlay=vc4-kms-v3d" >> "${TMP_CFG}"
 fi
 
+if ! grep -qE '^max_framebuffers=' "${TMP_CFG}"; then
+	echo "max_framebuffers=2" >> "${TMP_CFG}"
+fi
+
 if ! grep -qE '^dtoverlay=waveshare-35dpi$' "${TMP_CFG}"; then
 	cat >> "${TMP_CFG}" <<'EOF'
 
@@ -77,6 +81,8 @@ if ! grep -qE '^dtoverlay=waveshare-35dpi$' "${TMP_CFG}"; then
 # Free NC: physical pins 1, 17, 35, 37 only — no I2S audio HAT stacking.
 dtoverlay=waveshare-35dpi
 dtoverlay=waveshare-touch-35dpi
+# Fallback if still black (uncomment ONE line, reboot):
+#dtoverlay=vc4-kms-DPI-35inch
 # --- end Waveshare ---
 EOF
 fi
@@ -84,6 +90,25 @@ fi
 cat "${TMP_CFG}" > "${CONFIG_TXT}"
 rm -f "${TMP_CFG}"
 echo "Updated ${CONFIG_TXT}"
+
+# Force DPI mode on the kernel cmdline (helps when no HDMI is attached).
+CMDLINE="${ROOTFS_DIR}/boot/firmware/cmdline.txt"
+if [ -f "${CMDLINE}" ]; then
+	TMP_C="$(mktemp)"
+	# Strip prior DPI video= tokens
+	sed -E 's/ *video=DPI-1:[^ ]*//g' "${CMDLINE}" > "${TMP_C}.1"
+	if ! grep -q 'video=DPI-1:' "${TMP_C}.1"; then
+		sed 's/^/video=DPI-1:640x480M@60 /' "${TMP_C}.1" > "${TMP_C}.2"
+	else
+		cp "${TMP_C}.1" "${TMP_C}.2"
+	fi
+	# Collapse to a single clean line
+	tr -s ' \t' ' ' < "${TMP_C}.2" | sed 's/^ //;s/ $//' | tr -d '\n' > "${TMP_C}"
+	echo >> "${TMP_C}"
+	cat "${TMP_C}" > "${CMDLINE}"
+	rm -f "${TMP_C}" "${TMP_C}.1" "${TMP_C}.2"
+	echo "Updated ${CMDLINE}: $(cat "${CMDLINE}")"
+fi
 
 # LightDM: never blank the small appliance panel
 LIGHTDM="${ROOTFS_DIR}/etc/lightdm/lightdm.conf"
@@ -129,6 +154,18 @@ install -m 644 files/99-waveshare-touch.rules \
 
 install -m 755 files/patchbox-display-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-display-status"
+install -m 755 files/patchbox-fix-waveshare-dpi \
+	"${ROOTFS_DIR}/usr/local/bin/patchbox-fix-waveshare-dpi"
+
+install -d "${ROOTFS_DIR}/usr/lib/systemd/system"
+install -m 644 files/waveshare-dpi-backlight.service \
+	"${ROOTFS_DIR}/usr/lib/systemd/system/waveshare-dpi-backlight.service"
+
+on_chroot << EOF
+	systemctl daemon-reload
+	systemctl enable waveshare-dpi-backlight.service
+EOF
+# (on_chroot is provided by pi-gen; failure here should fail the build)
 
 install -d "${ROOTFS_DIR}/home/${FIRST_USER_NAME}"
 cat > "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/WAVESHARE-DPI.txt" <<EOF
@@ -145,32 +182,31 @@ Boot config (Bookworm)
   dtoverlay=vc4-kms-v3d
   dtoverlay=waveshare-35dpi
   dtoverlay=waveshare-touch-35dpi
+  cmdline: video=DPI-1:640x480M@60
   Overlays: /boot/firmware/overlays/waveshare-*.dtbo
+  Backlight: waveshare-dpi-backlight.service (GPIO18 high)
 
 GPIO — exclusive header
-  DPI uses nearly all 40 pins (RGB + clocks + touch SDA/SCL + BL PWM on GPIO18).
   Free NC only: physical pins 1, 17, 35, 37.
   Do NOT stack Inky, RaspiAudio, Pisound, or Pimidi on this header.
 
-Audio / MIDI for this image
-  Use a USB class-compliant audio interface for JACK.
-  USB MIDI for TRS/DIN gear.
-  aplay -l
-  patchbox  →  jack  →  select USB device
+Audio: USB interface for JACK (I2S HAT will not work under DPI).
 
-Checks
-  patchbox-display-status
-  # Desktop: Screen Configuration → DPI-1
-  # Touch device: Goodix Capacitive TouchScreen
+Black screen recovery
+  1. Power off, reseat HAT on all 40 pins (not offset).
+  2. SSH in and run:
+       sudo patchbox-fix-waveshare-dpi
+       sudo reboot
+  3. If still black:
+       sudo pinctrl set 18 op dh          # force backlight
+       sudo patchbox-display-status
+       dmesg | grep -iE 'dpi|panel|goodix'
+  4. Fallback: edit /boot/firmware/config.txt, uncomment:
+       #dtoverlay=vc4-kms-DPI-35inch
+     then reboot.
 
-Rotation (cmdline.txt, single line prefix)
-  video=DPI-1:640x480M@60,rotate=90
-  # touch matrices: /etc/udev/rules.d/99-waveshare-touch.rules
-
-Power saving
-  LightDM: X -s 0 -dpms (panel stays on)
-
-On-screen keyboard: Squeekboard or matchbox-keyboard if installed
+Rotation (optional)
+  video=DPI-1:640x480M@60,rotate=90   # in cmdline.txt
 EOF
 
 chown 1000:1000 \

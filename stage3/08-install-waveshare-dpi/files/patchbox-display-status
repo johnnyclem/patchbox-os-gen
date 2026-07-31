@@ -4,40 +4,65 @@ set -euo pipefail
 
 echo "=== config.txt display overlays ==="
 if [ -f /boot/firmware/config.txt ]; then
-	grep -E '^(#)?dtoverlay=(vc4|waveshare|spi0|i2c1|wm8960|googlevoice)|^(#)?dtparam=(spi|i2s|i2c|audio)|hdmi_' \
+	grep -nE '^(#)?dtoverlay=|^(#)?dtparam=(spi|i2s|i2c|audio)|^(#)?hdmi_|max_framebuffers|display_' \
 		/boot/firmware/config.txt || true
 else
 	echo "(missing /boot/firmware/config.txt)"
 fi
 
 echo
-echo "=== waveshare overlays present? ==="
-ls -la /boot/firmware/overlays/waveshare*.dtbo \
-	/boot/firmware/overlays/vc4-kms-DPI*.dtbo 2>/dev/null || echo "(none)"
+echo "=== cmdline (video=?) ==="
+if [ -f /boot/firmware/cmdline.txt ]; then
+	cat /boot/firmware/cmdline.txt
+	echo
+else
+	echo "(missing cmdline.txt)"
+fi
 
 echo
-echo "=== DRM / connected connectors ==="
-if command -v kmsprint >/dev/null 2>&1; then
-	kmsprint 2>/dev/null || true
-elif [ -d /sys/class/drm ]; then
+echo "=== waveshare overlays present? ==="
+ls -la /boot/firmware/overlays/waveshare*.dtbo \
+	/boot/firmware/overlays/vc4-kms-DPI*.dtbo 2>/dev/null || echo "(none — THIS IS A PROBLEM)"
+
+echo
+echo "=== DRM connectors ==="
+if [ -d /sys/class/drm ]; then
 	for c in /sys/class/drm/card*-*; do
 		[ -e "$c/status" ] || continue
-		echo "$(basename "$c"): $(cat "$c/status") $(cat "$c/enabled" 2>/dev/null || true)"
+		name=$(basename "$c")
+		st=$(cat "$c/status" 2>/dev/null || echo '?')
+		en=$(cat "$c/enabled" 2>/dev/null || echo '?')
+		modes=""
+		[ -f "$c/modes" ] && modes=$(tr '\n' ' ' < "$c/modes" | head -c 120)
+		echo "  $name status=$st enabled=$en modes=[$modes]"
 	done
 else
 	echo "(no DRM sysfs)"
 fi
 
 echo
-echo "=== input devices (touch?) ==="
-if command -v libinput >/dev/null 2>&1; then
-	libinput list-devices 2>/dev/null | grep -E 'Device:|Capabilities:' | head -40 || true
+echo "=== backlight ==="
+if ls /sys/class/backlight/* >/dev/null 2>&1; then
+	for d in /sys/class/backlight/*; do
+		echo "  $(basename "$d"): brightness=$(cat "$d/brightness" 2>/dev/null) max=$(cat "$d/max_brightness" 2>/dev/null) bl_power=$(cat "$d/bl_power" 2>/dev/null)"
+	done
+else
+	echo "  (no /sys/class/backlight — try: sudo pinctrl set 18 op dh)"
 fi
+if command -v pinctrl >/dev/null 2>&1; then
+	echo "  GPIO18: $(pinctrl get 18 2>/dev/null || echo '?')"
+fi
+
+echo
+echo "=== dmesg (dpi/panel/goodix) ==="
+dmesg 2>/dev/null | grep -iE 'dpi|waveshare|panel-dpi|goodix|ft6236|backlight|vc4-drm' | tail -40 || true
+
+echo
+echo "=== input (touch) ==="
 cat /proc/bus/input/devices 2>/dev/null | grep -E 'Name=|Handlers=' | head -40 || true
 
 echo
-echo "=== audio (expect USB when using DPI panel) ==="
-aplay -l 2>/dev/null || true
-
-echo
-echo "Notes: DPI owns the 40-pin header — use USB audio. See ~/WAVESHARE-DPI.txt"
+echo "=== quick fixes ==="
+echo "  sudo patchbox-fix-waveshare-dpi   # rewrite overlays + BL on + reboot"
+echo "  sudo pinctrl set 18 op dh            # force backlight if image is there but dark"
+echo "  See ~/WAVESHARE-DPI.txt"

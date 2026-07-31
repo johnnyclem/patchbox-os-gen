@@ -4,49 +4,45 @@ FIRST_USER_PASS="blokaslabs"
 HOSTNAME="patchbox"
 
 # SSH is a documented part of the Patchbox headless workflow (wifi hotspot +
-# ssh for initial setup). This restores that intended behavior via the
-# proper pi-gen mechanism (stage2 `systemctl enable ssh` gated on
-# ENABLE_SSH); a previous `touch .../boot/ssh` marker-file approach in
-# stage3 targeted the wrong filesystem on bookworm and was a silent no-op,
-# so SSH was actually shipping disabled. See README "Security & latency
-# tuning" for how to harden or disable this.
+# ssh for initial setup).
 ENABLE_SSH="${ENABLE_SSH:-1}"
 
-# Toggles for background services that run by default (product behavior
-# preserved). See README "Security & latency tuning".
 ENABLE_WIFI_HOTSPOT="${ENABLE_WIFI_HOTSPOT:-1}"
 ENABLE_VNC="${ENABLE_VNC:-1}"
 ENABLE_TELEMETRY="${ENABLE_TELEMETRY:-1}"
 
-# Pisound driver git ref checked out during the build. Defaults to the
-# moving `patchbox` branch (prior behavior); pin to a tag/SHA for
-# reproducible builds.
 PISOUND_GIT_REF="${PISOUND_GIT_REF:-patchbox}"
-
-# WiFi hotspot WPA2 passphrase. Defaults to the documented onboarding
-# passphrase; override for hardened/production builds.
 HOTSPOT_PASSPHRASE="${HOTSPOT_PASSPHRASE:-blokaslabs}"
-
-# Force a password change at first login for FIRST_USER_NAME. Defaults on
-# since FIRST_USER_PASS above is a well-known default; set to 0 to restore
-# the previous unforced behavior.
 ENABLE_FIRST_LOGIN_PASSWORD_CHANGE="${ENABLE_FIRST_LOGIN_PASSWORD_CHANGE:-1}"
 
-# --- Display target: Waveshare 3.5" DPI 640x480 capacitive (40-pin) ---
-# IPS @ 60Hz, Goodix touch. Uses nearly all GPIO (DPI666) — exclusive header.
-ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-1}"
+# --- Primary product stack (2026-07-31) ---
+#   Raspberry Pi 5
+#   + Blokas Pisound (40-pin): 1/4" audio I/O, MIDI DIN in/out
+#   + HDMI bar/ultrawide monitor 1280x400 + USB touch
+#
+# Pisound owns the GPIO header for audio/MIDI. Display is HDMI + USB HID
+# touch, so it does NOT fight the header.
 
-# Legacy Inky e-paper path (disabled: DPI owns the header).
+# HDMI ultrawide touch monitor (custom CVT mode)
+ENABLE_HDMI_ULTRAWIDE="${ENABLE_HDMI_ULTRAWIDE:-1}"
+HDMI_WIDTH="${HDMI_WIDTH:-1280}"
+HDMI_HEIGHT="${HDMI_HEIGHT:-400}"
+HDMI_REFRESH="${HDMI_REFRESH:-60}"
+
+# Off: GPIO DPI panel (conflicts with Pisound header)
+ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"
+
+# Off: e-paper (conflicts with Pisound; poor interactive UX)
 ENABLE_INKY="${ENABLE_INKY:-0}"
 ENABLE_INKY_UI="${ENABLE_INKY_UI:-0}"
 ENABLE_INKY_STATUS_SERVICE="${ENABLE_INKY_STATUS_SERVICE:-0}"
 
-# RaspiAudio I2S (disabled: pin conflict with DPI). Use USB audio for JACK.
+# Off: RaspiAudio I2S (Pisound is the audio interface)
 ENABLE_RASPIAUDIO="${ENABLE_RASPIAUDIO:-0}"
 RASPIAUDIO_OVERLAY="${RASPIAUDIO_OVERLAY:-wm8960-soundcard}"
 
-# Deferred: Blokas Pimidi 2×2 MIDI TRS (GPIO23) — not with DPI panel.
+# Deferred: Pimidi (optional extra MIDI TRS) — only if pin-compatible with Pisound
 # ENABLE_PIMIDI=0
 
-# Raspbian armhf package mirror (primary host times out mid-build often).
+# Raspbian armhf mirror (primary host times out mid-build often)
 RASPBIAN_MIRROR="${RASPBIAN_MIRROR:-http://mirrors.ocf.berkeley.edu/raspbian/raspbian}"

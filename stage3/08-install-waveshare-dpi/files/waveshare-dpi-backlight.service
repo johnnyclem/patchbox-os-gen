@@ -1,0 +1,27 @@
+[Unit]
+Description=Force Waveshare 3.5 DPI backlight on (GPIO18)
+# Black screen is often just BL off; panel still needs the DPI overlays.
+After=multi-user.target
+DefaultDependencies=yes
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Prefer pinctrl (Bookworm / Pi 5); fall back to sysfs backlight class.
+ExecStart=/bin/bash -c '\
+  if command -v pinctrl >/dev/null 2>&1; then \
+    pinctrl set 18 op dh || true; \
+  fi; \
+  for d in /sys/class/backlight/*; do \
+    [ -d "$d" ] || continue; \
+    echo 0 > "$d/bl_power" 2>/dev/null || true; \
+    if [ -f "$d/max_brightness" ]; then \
+      cat "$d/max_brightness" > "$d/brightness" 2>/dev/null || true; \
+    else \
+      echo 255 > "$d/brightness" 2>/dev/null || true; \
+    fi; \
+  done'
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
