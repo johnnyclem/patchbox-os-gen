@@ -1,0 +1,11 @@
+# Waveshare 3.5 DPI capacitive (Goodix). Uncomment ONE matrix if you rotate.
+# 0° (default) — no matrix needed
+# 90°:
+#ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 -1 1 1 0 0"
+# 180°:
+#ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="-1 0 1 0 -1 1"
+# 270°:
+#ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 1 0 -1 0 1"
+
+# Ensure Goodix nodes are tagged as touchscreens for libinput
+ATTRS{name}=="*Goodix*", ENV{ID_INPUT}="1", ENV{ID_INPUT_TOUCHSCREEN}="1"

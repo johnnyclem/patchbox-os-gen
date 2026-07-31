@@ -1,0 +1,5 @@
+#!/bin/bash
+# One-shot boot splash on Inky Impression.
+set -euo pipefail
+export PYTHONPATH="/usr/local/lib/patchbox-inky${PYTHONPATH:+:$PYTHONPATH}"
+exec /opt/pimoroni/bin/python -m patchbox_inky splash "$@"

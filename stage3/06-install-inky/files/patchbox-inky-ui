@@ -1,0 +1,5 @@
+#!/bin/bash
+# Main Patchbox Inky UI (boot splash + interactive JACK patchbay).
+set -euo pipefail
+export PYTHONPATH="/usr/local/lib/patchbox-inky${PYTHONPATH:+:$PYTHONPATH}"
+exec /opt/pimoroni/bin/python -m patchbox_inky "$@"

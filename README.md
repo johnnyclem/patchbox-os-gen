@@ -259,6 +259,50 @@ The following environment variables are supported:
    `FIRST_USER_PASS` is a well-known default. Set to `0` to restore the
    previous unforced behavior.
 
+ * `ENABLE_WAVESHARE_DPI` (Default: `1`)
+
+   Configure **Waveshare 3.5″ DPI LCD** (640×480 IPS capacitive, 40-pin).
+   Installs vendor DTBO overlays, `dtoverlay=waveshare-35dpi` +
+   `waveshare-touch-35dpi`, libinput touch rules, and LightDM no-blank.
+   **Conflicts with Inky / RaspiAudio / most HATs** on the same header.
+
+ * `ENABLE_INKY` (Default: `0`)
+
+   Install support for the Pimoroni Inky Impression e-paper HAT (tested with
+   the 5.7" 600×448 7-colour Gallery Palette panel on Raspberry Pi 5).
+   Installs a system venv at `/opt/pimoroni` with the official `inky` Python
+   library, the Patchbox Inky UI package (`patchbox-inky-ui` / splash /
+   patchbay / status), and loads `i2c-dev`/`spidev`. SPI + I2C device-tree
+   enablement lives in `stage1` `config.txt` and is always applied
+   (including `dtoverlay=i2c1-pi5` for Pi 5). Set to `0` to skip the
+   Python/service install only.
+
+ * `ENABLE_INKY_UI` (Default: `0`)
+
+   When `1` (and `ENABLE_INKY=1`), enable `patchbox-inky-ui.service` at boot
+   (splash + one patchbay frame; navigation prefers keyboard/TUI because
+   7-colour e-ink takes ~30s per full refresh). Default **off** — use
+   `patchbox-inky-tui` over SSH for interactive patchbay, or a future IPS.
+
+ * `ENABLE_INKY_STATUS_SERVICE` (Default: `0`)
+
+   Legacy oneshot that only paints the status snapshot. Ignored when
+   `ENABLE_INKY_UI=1`. Prefer `patchbox-inky-status` on the CLI instead.
+
+ * `ENABLE_RASPIAUDIO` (Default: `1`)
+
+   Configure the image for a **RaspiAudio Mic Ultra++** (or Mic+) I2S HAT as
+   the primary sound card under the Inky Impression. Enables `dtparam=i2s=on`,
+   disables onboard `dtparam=audio`, and installs `dtoverlay=` from
+   `RASPIAUDIO_OVERLAY`. Intended stack: **Pi → RaspiAudio (passthrough) → Inky**.
+
+ * `RASPIAUDIO_OVERLAY` (Default: `wm8960-soundcard`)
+
+   Device-tree overlay for RaspiAudio. Use `wm8960-soundcard` for full WM8960
+   mixer control (Ultra++ Method 2 style), or `googlevoicehat-soundcard` for
+   RaspiAudio Method 1 / Mic+. Switch after first boot if `aplay -l` shows no
+   card.
+
  * `STAGE_LIST` (Default: `stage*`)
 
     If set, then instead of working through the numeric stages in order, this list will be followed. For example setting to `"stage0 stage1 mystage stage2"` will run the contents of `mystage` before stage2. Note that quotes are needed around the list. An absolute or relative path can be given for stages outside the pi-gen directory.
@@ -363,6 +407,100 @@ This fork bakes in a set of low-latency-audio defaults on top of upstream pi-gen
    install it. Off by default: better worst-case latency, but real
    driver-compatibility and thermal/throughput risk, and the tuning above
    already gets most of the win on the stock kernel.
+
+### Waveshare 3.5" DPI LCD (primary display — 640×480 capacitive)
+
+Default appliance target (`ENABLE_WAVESHARE_DPI=1`):
+
+| Spec | Value |
+|------|--------|
+| Panel | Waveshare **3.5inch DPI LCD**, IPS, **640×480** @ 60 Hz |
+| Touch | Goodix **capacitive**, 5-point, glass |
+| Interface | Raspberry Pi **40-pin**, DPI666 + I²C touch |
+| Wiki | https://www.waveshare.com/wiki/3.5inch_DPI_LCD |
+
+**GPIO:** nearly the full header is used. **Do not stack** Inky, RaspiAudio,
+Pisound, or Pimidi on the same 40-pin. **Audio = USB** class-compliant
+interface for JACK.
+
+Bookworm boot overlays (vendored `.dtbo` files in the image):
+
+```
+dtoverlay=vc4-kms-v3d
+dtoverlay=waveshare-35dpi
+dtoverlay=waveshare-touch-35dpi
+```
+
+On device: `patchbox-display-status`, notes in `~/WAVESHARE-DPI.txt`.
+LightDM keeps the panel awake (`X -s 0 -dpms`). Squeekboard is installed
+for on-screen keyboard.
+
+### Inky Impression 5.7" (optional e-paper — disabled by default)
+
+This image is set up for a **Pimoroni Inky Impression 5.7"** (600×448, 7-colour
+ACeP / Gallery Palette) plugged into the 40-pin header on a **Raspberry Pi 5**:
+
+| Bus | Pins | Role |
+|---|---|---|
+| I2C1 | SDA / SCL | HAT ID EEPROM (auto-detect size/variant) |
+| SPI0 | MOSI / MISO / SCK + userspace CS | Panel framebuffer transfer |
+
+`config.txt` enables `dtparam=i2c_arm=on`, `dtparam=spi=on`, plus
+`dtoverlay=spi0-0cs`, `dtoverlay=i2c1`, and `dtoverlay=i2c1-pi5` (the last is
+the Pi 5–specific I2C overlay required by the upstream Pimoroni installer).
+The primary user is already in the `spi`, `i2c`, and `gpio` groups (stage2).
+
+### Boot splash + patchbay UI
+
+7-colour Inky full refresh is **~30s** — interactive use prefers the
+**keyboard TUI** (not e-ink). Driver **forces 5.7″ UC8159 600×448** by
+default (EEPROM auto-detect can cause half-screen paints).
+
+| Input | Action |
+|---|---|
+| **A** / ↑ `k` `w` | Move selection up |
+| **B** / ↓ `j` `s` | Move selection down |
+| **C** / Enter / Space | Toggle JACK link |
+| **D** / Tab | Cycle focus (sources → sinks → links) |
+| **r** | Refresh graph |
+| **q** | Quit |
+
+```bash
+# Preferred: keyboard patchbay over SSH (no e-ink wait)
+patchbox-inky-tui
+
+# E-ink geometry check (full white, then full black)
+patchbox-inky-ui clear-test --type 5.7
+
+# One-shot splash / status on glass
+patchbox-inky-ui splash --type 5.7
+patchbox-inky-ui --simulate
+```
+
+`ENABLE_INKY_UI=0` by default (no boot e-ink service). Set to `1` only if
+you want splash + one patchbay frame at boot.
+
+**Hardware note:** Classic Pisound and Inky both need the 40-pin header without
+sharing. This fork targets **RaspiAudio (passthrough) under Inky** instead.
+The e-paper is glass — use standoffs/booster header; do not press the panel.
+Full 7-colour refreshes take ~30s.
+
+### Audio / MIDI with the DPI panel
+
+| Path | Status |
+|------|--------|
+| USB audio interface | **Recommended** for JACK |
+| RaspiAudio / I2S HAT | Off (`ENABLE_RASPIAUDIO=0`) — pin fight with DPI |
+| Inky e-paper | Off (`ENABLE_INKY=0`) — pin fight with DPI |
+| Blokas Pimidi | Deferred; also needs free GPIOs (not with DPI) |
+
+### Build toggles (display)
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ENABLE_WAVESHARE_DPI` | `1` | Waveshare 3.5″ 640×480 capacitive |
+| `ENABLE_INKY` | `0` | Legacy e-paper software install |
+| `ENABLE_RASPIAUDIO` | `0` | Legacy I2S audio HAT |
 
 ### Security notes
 

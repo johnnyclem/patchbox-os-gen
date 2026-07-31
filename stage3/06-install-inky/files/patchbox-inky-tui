@@ -1,0 +1,5 @@
+#!/bin/bash
+# Keyboard-first JACK patchbay (no e-ink wait). Use over SSH or local console.
+set -euo pipefail
+export PYTHONPATH="/usr/local/lib/patchbox-inky${PYTHONPATH:+:$PYTHONPATH}"
+exec /opt/pimoroni/bin/python -m patchbox_inky tui "$@"

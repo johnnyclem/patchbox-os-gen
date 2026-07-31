@@ -1,0 +1,29 @@
+[Unit]
+Description=Patchbox status screen on Inky Impression e-paper
+Documentation=https://github.com/pimoroni/inky
+# Wait for network and typical audio stack so the status page is useful.
+After=network-online.target multi-user.target
+Wants=network-online.target
+# Do not block boot if the HAT is absent or SPI is busy.
+StartLimitIntervalSec=0
+
+[Service]
+Type=oneshot
+User=patch
+Group=patch
+# Supplementary groups needed for /dev/spidev*, /dev/i2c-*, /dev/gpiochip*
+SupplementaryGroups=spi i2c gpio audio
+Environment=HOME=/home/patch
+Environment=PYTHONPATH=/usr/local/lib/patchbox-inky
+WorkingDirectory=/home/patch
+# Delay then paint (multiple ExecStart lines run in order for Type=oneshot).
+ExecStartPre=/bin/sleep 15
+ExecStart=/usr/local/bin/patchbox-inky-status
+# Full e-paper refresh is slow (~30s); allow plenty of time.
+TimeoutStartSec=180
+Nice=10
+# Failure is fine on boards without the HAT attached.
+SuccessExitStatus=0 1
+
+[Install]
+WantedBy=multi-user.target

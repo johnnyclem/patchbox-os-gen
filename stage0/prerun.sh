@@ -6,5 +6,8 @@ if [ "$RELEASE" != "bookworm" ]; then
 fi
 
 if [ ! -d "${ROOTFS_DIR}" ] || [ "${USE_QCOW2}" = "1" ]; then
-	bootstrap ${RELEASE} "${ROOTFS_DIR}" http://raspbian.raspberrypi.com/raspbian/
+	# Match stage0/00-configure-apt default; override via RASPBIAN_MIRROR in config.
+	RASPBIAN_MIRROR="${RASPBIAN_MIRROR:-http://mirrors.ocf.berkeley.edu/raspbian/raspbian}"
+	RASPBIAN_MIRROR="${RASPBIAN_MIRROR%/}"
+	bootstrap ${RELEASE} "${ROOTFS_DIR}" "${RASPBIAN_MIRROR}/"
 fi

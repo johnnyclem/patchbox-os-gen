@@ -1,0 +1,11 @@
+# Inky Impression (Pimoroni) runtime deps. The `inky` Python package itself is
+# installed into /opt/pimoroni via pip in 01-run.sh (not available as a Debian
+# package). System site packages keep the venv light and avoid compiling numpy/pillow.
+python3-venv
+python3-pip
+python3-pil
+python3-numpy
+python3-spidev
+python3-libgpiod
+fonts-dejavu-core
+i2c-tools

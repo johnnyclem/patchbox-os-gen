@@ -1,0 +1,34 @@
+[Unit]
+Description=Patchbox Inky Impression UI (boot splash + JACK patchbay)
+Documentation=file:///home/patch/Pimoroni/inky/README-patchbox.txt
+After=network-online.target multi-user.target
+Wants=network-online.target
+# Soft dependency: start even if JACK unit name differs; the UI waits for jack_lsp.
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+User=patch
+Group=patch
+SupplementaryGroups=spi i2c gpio audio
+Environment=HOME=/home/patch
+Environment=PYTHONPATH=/usr/local/lib/patchbox-inky
+WorkingDirectory=/home/patch
+# Force 5.7" UC8159 (600x448). Splash + one patchbay frame only; navigation
+# is keyboard/TUI by default (avoids 30s e-ink repaint per key). Buttons A–D
+# still work for TUI. Use --eink-on-action for full e-ink interaction.
+ExecStart=/usr/local/bin/patchbox-inky-ui ui --type 5.7 --tui --splash-delay 4 --jack-wait 45
+Restart=on-failure
+RestartSec=20
+StartLimitIntervalSec=600
+StartLimitBurst=3
+# First frame can take ~30s; interactive C presses also block ~30s each.
+TimeoutStartSec=240
+# Long-running interactive process — do not kill after start.
+TimeoutStopSec=30
+Nice=10
+# Missing HAT / SPI errors: exit 1 a few times then give up (StartLimitBurst).
+SuccessExitStatus=0
+
+[Install]
+WantedBy=multi-user.target

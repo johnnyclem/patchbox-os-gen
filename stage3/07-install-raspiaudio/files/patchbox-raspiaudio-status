@@ -1,0 +1,39 @@
+#!/bin/bash
+# Quick diagnostics for RaspiAudio + JACK on Patchbox.
+set -euo pipefail
+
+echo "=== boot overlays (audio-related) ==="
+if [ -f /boot/firmware/config.txt ]; then
+	grep -E '^(#)?dtparam=(audio|i2s)|^(#)?dtoverlay=(googlevoicehat|wm8960|pisound|pimidi)' \
+		/boot/firmware/config.txt || true
+else
+	echo "(no /boot/firmware/config.txt)"
+fi
+
+echo
+echo "=== aplay -l ==="
+aplay -l 2>/dev/null || echo "(aplay failed)"
+
+echo
+echo "=== arecord -l ==="
+arecord -l 2>/dev/null || echo "(arecord failed)"
+
+echo
+echo "=== amidi -l ==="
+amidi -l 2>/dev/null || echo "(amidi failed)"
+
+echo
+echo "=== JACK ==="
+if command -v jack_lsp >/dev/null 2>&1 && jack_lsp >/dev/null 2>&1; then
+	jack_lsp | head -40
+else
+	echo "JACK not running (or jack_lsp missing)"
+fi
+
+echo
+echo "=== hint ==="
+echo "If the I2S card is missing, try the other overlay in /boot/firmware/config.txt:"
+echo "  dtoverlay=wm8960-soundcard"
+echo "  # or"
+echo "  dtoverlay=googlevoicehat-soundcard"
+echo "then: sudo reboot"

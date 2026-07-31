@@ -1,0 +1,5 @@
+# Survive flaky primary mirrors during long pi-gen package downloads.
+Acquire::Retries "5";
+Acquire::http::Timeout "30";
+Acquire::https::Timeout "30";
+Acquire::http::Pipeline-Depth "0";
