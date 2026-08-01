@@ -1,0 +1,57 @@
+#!/bin/bash
+# Quick health check for the RK-00pi appliance on Patchbox OS.
+set -euo pipefail
+
+echo "=== RK-00pi / Patchbox appliance ==="
+echo "date: $(date -Is 2>/dev/null || date)"
+echo
+
+if [ -d /opt/rk00pi ]; then
+	echo "install: /opt/rk00pi present"
+	if [ -x /opt/rk00pi/venv/bin/python ]; then
+		echo "python:  $(/opt/rk00pi/venv/bin/python -V 2>&1)"
+		/opt/rk00pi/venv/bin/python - <<'PY' 2>/dev/null || echo "imports:  (partial — run under service for full path)"
+import importlib
+for m in ("pygame", "mido", "alsa_midi", "rtmidi", "gpiod"):
+    try:
+        importlib.import_module(m if m != "alsa_midi" else "alsa_midi")
+        print(f"  ok  {m}")
+    except Exception as e:
+        print(f"  --  {m}: {e.__class__.__name__}")
+PY
+	else
+		echo "python:  missing venv at /opt/rk00pi/venv"
+	fi
+else
+	echo "install: /opt/rk00pi MISSING"
+fi
+echo
+
+if [ -f /etc/rk00pi/config.toml ]; then
+	echo "config:  /etc/rk00pi/config.toml"
+	grep -E '^(width|height|fullscreen|data_dir|driver|backend|prefer_pisound)' \
+		/etc/rk00pi/config.toml 2>/dev/null | sed 's/^/  /' || true
+else
+	echo "config:  missing"
+fi
+echo
+
+if systemctl cat rk00pi.service >/dev/null 2>&1; then
+	echo "unit:    $(systemctl is-enabled rk00pi.service 2>/dev/null || echo unknown) / $(systemctl is-active rk00pi.service 2>/dev/null || echo unknown)"
+	systemctl --no-pager -l status rk00pi.service 2>/dev/null | head -12 | sed 's/^/  /' || true
+else
+	echo "unit:    rk00pi.service not installed"
+fi
+echo
+
+echo "default target: $(systemctl get-default 2>/dev/null || echo '?')"
+echo "display mode (cmdline):"
+grep -oE 'video=HDMI-A-[12]:[^ ]+' /boot/firmware/cmdline.txt 2>/dev/null | sed 's/^/  /' || echo "  (none)"
+echo
+echo "MIDI / audio (best-effort):"
+amidi -l 2>/dev/null | sed 's/^/  /' || true
+aplay -l 2>/dev/null | head -20 | sed 's/^/  /' || true
+echo
+echo "Hints: journalctl -u rk00pi -b -n 80"
+echo "       sudo systemctl restart rk00pi"
+echo "       Desktop: sudo systemctl start lightdm  (stops competing with kmsdrm if needed)"

@@ -202,7 +202,21 @@ The following environment variables are supported:
 
  * `WPA_COUNTRY` (Default: unset)
 
-   Sets the default WLAN regulatory domain and unblocks WLAN interfaces. This should be a 2-letter ISO/IEC 3166 country Code, i.e. `GB`
+   Sets the default WLAN regulatory domain and unblocks WLAN interfaces. This should be a 2-letter ISO/IEC 3166 country Code, i.e. `US` or `GB`. **Required** on modern Pi OS for the radio to leave rfkill.
+
+ * `WPA_ESSID` / `WPA_PASSWORD` (Default: unset)
+
+   Pre-join a WiFi network at first boot (written into NetworkManager +
+   `wpa_supplicant.conf`). Put secrets in **`config.local`** (gitignored;
+   see `config.local.example`), or pass on the build command line:
+
+   ```bash
+   WPA_COUNTRY=US WPA_ESSID='MyNet' WPA_PASSWORD='secret' ./build-docker.sh
+   ```
+
+   When `WPA_ESSID` is set, `ENABLE_WIFI_HOTSPOT` defaults to **0** so the
+   radio can join your AP instead of starting the Patchbox hotspot (set
+   `FORCE_WIFI_HOTSPOT=1` to keep both behaviors you opt into explicitly).
 
  * `ENABLE_SSH` (Default: `0`)
 
@@ -408,11 +422,20 @@ This fork bakes in a set of low-latency-audio defaults on top of upstream pi-gen
    driver-compatibility and thermal/throughput risk, and the tuning above
    already gets most of the win on the stock kernel.
 
-### Primary stack: Pisound + HDMI 1280×400 ultrawide
+### Primary stack: Pisound + HDMI 1280×400 + RK-00pi
 
 ```text
 Pi 5 + Pisound (40-pin: 1/4" I/O, MIDI DIN)
     + HDMI bar monitor 1280×400 + USB touch
+    + RK-00pi kiosk (main appliance — sequencer / MIDI hub)
+```
+
+**Main app** is the git submodule [`RK-00pi`](https://github.com/johnnyclem/RK-00pi)
+(`git@github.com:johnnyclem/RK-00pi.git`), installed by `stage3/10-install-rk00pi`
+into `/opt/rk00pi` with `rk00pi.service` (SDL `kmsdrm`, multi-user boot).
+
+```bash
+git submodule update --init --recursive
 ```
 
 Display mode is forced via `hdmi_cvt` / `hdmi_mode=87` and cmdline
@@ -427,14 +450,17 @@ e-paper, RaspiAudio I2S — each conflicts with Pisound and/or the chosen UI.
 | Path | Status |
 |------|--------|
 | **Pisound** | **Primary** (¼″ + MIDI DIN, JACK) |
-| USB audio | Optional secondary |
+| **RK-00pi** | **Primary UI** (ALSA MIDI backend, prefer Pisound) |
+| USB audio / USB MIDI | Optional secondary |
 | RaspiAudio I2S | Off |
 | Pimidi | Ordered / optional later if pins free |
 
-### Build toggles (display)
+### Build toggles (display + main app)
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
+| `ENABLE_RK00PI` | `1` | Install RK-00pi from submodule |
+| `ENABLE_RK00PI_SERVICE` | `1` | Enable kiosk unit at boot |
 | `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Panel geometry |
 | `ENABLE_WAVESHARE_DPI` | `0` | GPIO DPI (conflicts with Pisound) |

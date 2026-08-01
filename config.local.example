@@ -1,0 +1,14 @@
+# Copy to config.local and fill in (config.local is gitignored):
+#   cp config.local.example config.local
+#
+# Then rebuild:
+#   ./build-docker.sh
+
+# Required for client WiFi join + RF unblock on Bookworm
+WPA_COUNTRY="US"
+WPA_ESSID="YourNetworkName"
+WPA_PASSWORD="YourNetworkPassword"
+
+# When home WiFi is configured, leave the onboard hotspot off so the radio
+# can join your AP (override to 1 if you still want the Patchbox hotspot).
+ENABLE_WIFI_HOTSPOT=0

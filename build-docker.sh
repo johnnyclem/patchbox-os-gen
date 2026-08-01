@@ -160,6 +160,12 @@ case $(uname -m) in
     ;;
 esac
 
+# Optional secrets file (WiFi SSID/password). Prefer bind-mount over image COPY.
+CONFIG_LOCAL_MOUNT=""
+if [ -f "${DIR}/config.local" ]; then
+	CONFIG_LOCAL_MOUNT="--volume ${DIR}/config.local:/pi-gen/config.local:ro"
+fi
+
 trap 'echo "got CTRL+C... please wait 5s" && ${DOCKER} stop -t 5 ${DOCKER_CMDLINE_NAME}' SIGINT SIGTERM
 time ${DOCKER} run \
   $DOCKER_CMDLINE_PRE \
@@ -170,7 +176,22 @@ time ${DOCKER} run \
   -v /lib/modules:/lib/modules \
   ${PIGEN_DOCKER_OPTS} \
   --volume "${CONFIG_FILE}":/config:ro \
+  ${CONFIG_LOCAL_MOUNT} \
   -e "GIT_HASH=${GIT_HASH}" \
+  -e "WPA_COUNTRY=${WPA_COUNTRY:-}" \
+  -e "WPA_ESSID=${WPA_ESSID:-}" \
+  -e "WPA_PASSWORD=${WPA_PASSWORD:-}" \
+  -e "ENABLE_WIFI_HOTSPOT=${ENABLE_WIFI_HOTSPOT:-}" \
+  -e "ENABLE_SSH=${ENABLE_SSH:-}" \
+  -e "ENABLE_HDMI_ULTRAWIDE=${ENABLE_HDMI_ULTRAWIDE:-}" \
+  -e "HDMI_WIDTH=${HDMI_WIDTH:-}" \
+  -e "HDMI_HEIGHT=${HDMI_HEIGHT:-}" \
+  -e "HDMI_REFRESH=${HDMI_REFRESH:-}" \
+  -e "ENABLE_RK00PI=${ENABLE_RK00PI:-}" \
+  -e "ENABLE_RK00PI_SERVICE=${ENABLE_RK00PI_SERVICE:-}" \
+  -e "RK00PI_WIDTH=${RK00PI_WIDTH:-}" \
+  -e "RK00PI_HEIGHT=${RK00PI_HEIGHT:-}" \
+  -e "RASPBIAN_MIRROR=${RASPBIAN_MIRROR:-}" \
   $DOCKER_CMDLINE_POST \
   pi-gen \
   bash -e -o pipefail -c "

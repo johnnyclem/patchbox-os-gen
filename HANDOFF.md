@@ -1,4 +1,4 @@
-# Handoff — Patchbox OS gen (Pi 5 + Pisound + HDMI ultrawide)
+# Handoff — Patchbox OS gen (Pi 5 + Pisound + HDMI + RK-00pi)
 
 **Date:** 2026-07-31  
 **Branch:** `patchbox-2024-01`  
@@ -13,13 +13,20 @@ Raspberry Pi 5
   ├── Blokas Pisound (40-pin HAT)
   │     • 1/4" audio in/out
   │     • MIDI DIN in/out
-  │     • Patchbox / JACK native path
-  └── HDMI bar / ultrawide monitor 1280×400
-        • Video: HDMI
-        • Touch: USB HID
+  │     • Patchbox / JACK path available
+  ├── HDMI bar / ultrawide monitor 1280×400
+  │     • Video: HDMI
+  │     • Touch: USB HID
+  └── RK-00pi (main appliance UI)
+        • SDL KMS/DRM kiosk (no X required)
+        • RK-008 / RK-006 / RK-004 style sequencer + MIDI hub
+        • systemd: rk00pi.service (Type=notify)
 ```
 
 No GPIO display. Pisound owns the header for audio/MIDI. Display does not compete for pins.
+
+**App source:** git submodule `RK-00pi` → `git@github.com:johnnyclem/RK-00pi.git`  
+Baked into the image by `stage3/10-install-rk00pi` as `/opt/rk00pi`.
 
 ---
 
@@ -27,6 +34,9 @@ No GPIO display. Pisound owns the header for audio/MIDI. Display does not compet
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
+| `ENABLE_RK00PI` | **1** | Install main app from submodule |
+| `ENABLE_RK00PI_SERVICE` | **1** | `systemctl enable rk00pi` |
+| `RK00PI_WIDTH` / `HEIGHT` | (HDMI dims) | `/etc/rk00pi/config.toml` panel size |
 | `ENABLE_HDMI_ULTRAWIDE` | **1** | Custom HDMI mode **1280×400@60** |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Override if panel differs |
 | `ENABLE_WAVESHARE_DPI` | **0** | 3.5″ GPIO DPI (parked) |
@@ -35,11 +45,12 @@ No GPIO display. Pisound owns the header for audio/MIDI. Display does not compet
 | `PISOUND_GIT_REF` | `patchbox` | Pisound tree checkout |
 | `RASPBIAN_MIRROR` | Berkeley OCF | Avoid flaky primary Raspbian |
 
-Stages always install Pisound packages (`stage3/02-install-pisound`) — that is the audio story.
+Stages always install Pisound packages (`stage3/02-install-pisound`) — that is the audio story.  
+Boot default remains **multi-user.target** (console) so kmsdrm can own the panel.
 
 ---
 
-## Stages (display / optional)
+## Stages (product path)
 
 | Stage | Default | Role |
 |-------|---------|------|
@@ -49,6 +60,23 @@ Stages always install Pisound packages (`stage3/02-install-pisound`) — that is
 | `07-install-raspiaudio` | off | I2S audio HAT (legacy) |
 | `08-install-waveshare-dpi` | off | GPIO DPI 640×480 (legacy) |
 | `09-hdmi-ultrawide` | **on** | HDMI CVT + cmdline + touch + docs |
+| `10-install-rk00pi` | **on** | **Main app** from `RK-00pi` submodule |
+
+### RK-00pi layout on the image
+
+| Path | Purpose |
+|------|---------|
+| `/opt/rk00pi/` | App + venv |
+| `/var/lib/rk00pi/` | Writable projects / presets / maps / autosave |
+| `/etc/rk00pi/config.toml` | Panel size + engine/MIDI/gates |
+| `rk00pi.service` | Kiosk unit (`SDL_VIDEODRIVER=kmsdrm`) |
+
+Update submodule then rebuild:
+
+```bash
+git submodule update --init --remote RK-00pi
+# rebuild image (docker COPY includes submodule tree)
+```
 
 ---
 
@@ -90,13 +118,18 @@ USB touch is normally plug-and-play via libinput.
 
 ## Rebuild
 
+Fresh build (picks up new stage + submodule via Docker `COPY`):
+
 ```bash
 cd /Users/johnnyclem/Desktop/Repos/patchbox-os-gen
+git submodule update --init --recursive
 docker ps -aq --filter name=pigen | xargs docker rm -fv 2>/dev/null
 nohup env RASPBIAN_MIRROR=http://mirrors.ocf.berkeley.edu/raspbian/raspbian \
   ./build-docker.sh > deploy/build-docker-live.log 2>&1 &
 tail -f deploy/build-docker-live.log
 ```
+
+`stage3/10-install-rk00pi` runs `pip install` under qemu — expect that substep to take a while.
 
 Resume after stage3 failure:
 
@@ -109,21 +142,48 @@ CONTINUE=1 RASPBIAN_MIRROR=http://mirrors.ocf.berkeley.edu/raspbian/raspbian \
 
 ---
 
+## Client WiFi (SSH headless)
+
+Bake home WiFi into the image so the Pi joins your AP on first boot:
+
+```bash
+cp config.local.example config.local
+# edit config.local — set WPA_COUNTRY, WPA_ESSID, WPA_PASSWORD
+# ENABLE_WIFI_HOTSPOT is forced to 0 when SSID is set (unless FORCE_WIFI_HOTSPOT=1)
+./build-docker.sh
+```
+
+Or one-shot:
+
+```bash
+WPA_COUNTRY=US WPA_ESSID='MyNet' WPA_PASSWORD='secret' ./build-docker.sh
+```
+
+Writes NetworkManager `preconfigured.nmconnection` + `wpa_supplicant.conf`.  
+`config.local` is **gitignored** — never commit secrets.
+
+After boot: `ssh patch@patchbox.local` (or the DHCP IP). Password: `blokaslabs` unless changed.
+
 ## First-boot checklist
 
 1. Pisound seated on 40-pin; HDMI + USB touch to ultrawide  
-2. `aplay -l` / `amidi -l` → Pisound present  
-3. `patchbox-display-status` → HDMI mode / touch  
-4. JACK via patchbox-cli → Pisound device  
-5. `cat ~/DISPLAY-PISOUND.txt`
+2. Pi joins preconfigured WiFi → `ssh patch@patchbox.local`  
+3. Panel should show **RK-00pi** Launch grid (not only desktop)  
+4. `patchbox-rk00pi-status` → unit active, imports OK  
+5. `aplay -l` / `amidi -l` → Pisound present  
+6. `patchbox-display-status` → HDMI mode / touch  
+7. `cat ~/RK-00PI.txt` / `~/DISPLAY-PISOUND.txt`
+
+Optional desktop: `sudo systemctl stop rk00pi && sudo systemctl start lightdm`  
+(kmsdrm and X cannot both own the panel.)
 
 ---
 
 ## Next session ideas
 
-1. Verify 1280×400 EDID vs forced CVT on real panel  
-2. Ultrawide desktop UX (panel layout, patchage window sizes)  
-3. Auto-select Pisound as default JACK device  
+1. Flash image and soak first-boot to RK-00pi UI on real 1280×400 panel  
+2. Verify Pisound DIN MIDI + prefer_pisound path in journal  
+3. Gate driver still `null` until buffered stage is signed off  
 4. Pimidi only if pins free with Pisound (or USB MIDI)
 
 ---
@@ -132,9 +192,11 @@ CONTINUE=1 RASPBIAN_MIRROR=http://mirrors.ocf.berkeley.edu/raspbian/raspbian \
 
 ```text
 config
-stage1/00-boot-files/files/config.txt
+.gitmodules
+RK-00pi/                          # submodule (main app)
 stage3/02-install-pisound/
 stage3/09-hdmi-ultrawide/
+stage3/10-install-rk00pi/         # bake app into image
 HANDOFF.md
-deploy/image_*.zip   # after successful build
+deploy/image_*.zip                # after successful build
 ```

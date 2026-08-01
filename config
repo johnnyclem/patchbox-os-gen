@@ -19,6 +19,7 @@ ENABLE_FIRST_LOGIN_PASSWORD_CHANGE="${ENABLE_FIRST_LOGIN_PASSWORD_CHANGE:-1}"
 #   Raspberry Pi 5
 #   + Blokas Pisound (40-pin): 1/4" audio I/O, MIDI DIN in/out
 #   + HDMI bar/ultrawide monitor 1280x400 + USB touch
+#   + RK-00pi kiosk (main app — sequencer / MIDI hub)
 #
 # Pisound owns the GPIO header for audio/MIDI. Display is HDMI + USB HID
 # touch, so it does NOT fight the header.
@@ -28,6 +29,14 @@ ENABLE_HDMI_ULTRAWIDE="${ENABLE_HDMI_ULTRAWIDE:-1}"
 HDMI_WIDTH="${HDMI_WIDTH:-1280}"
 HDMI_HEIGHT="${HDMI_HEIGHT:-400}"
 HDMI_REFRESH="${HDMI_REFRESH:-60}"
+
+# RK-00pi — main appliance (submodule: RK-00pi → git@github.com:johnnyclem/RK-00pi.git)
+# Boots multi-user.target → rk00pi.service (SDL kmsdrm fullscreen).
+ENABLE_RK00PI="${ENABLE_RK00PI:-1}"
+ENABLE_RK00PI_SERVICE="${ENABLE_RK00PI_SERVICE:-1}"
+RK00PI_WIDTH="${RK00PI_WIDTH:-}"
+RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
+# Empty width/height → stage uses HDMI_WIDTH / HDMI_HEIGHT (1280x400).
 
 # Off: GPIO DPI panel (conflicts with Pisound header)
 ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"
@@ -46,3 +55,26 @@ RASPIAUDIO_OVERLAY="${RASPIAUDIO_OVERLAY:-wm8960-soundcard}"
 
 # Raspbian armhf mirror (primary host times out mid-build often)
 RASPBIAN_MIRROR="${RASPBIAN_MIRROR:-http://mirrors.ocf.berkeley.edu/raspbian/raspbian}"
+
+# --- Client WiFi (join your AP → SSH headless) ---
+# Secrets: copy config.local.example → config.local (gitignored) and fill in.
+# Or: WPA_COUNTRY=US WPA_ESSID='Net' WPA_PASSWORD='secret' ./build-docker.sh
+#
+# WPA_COUNTRY (2-letter ISO) is required to unblock the radio on Bookworm.
+WPA_COUNTRY="${WPA_COUNTRY:-}"
+WPA_ESSID="${WPA_ESSID:-}"
+WPA_PASSWORD="${WPA_PASSWORD:-}"
+
+# shellcheck disable=SC1091
+_CONFIG_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd)" || _CONFIG_DIR="."
+if [ -f "${_CONFIG_DIR}/config.local" ]; then
+	# shellcheck source=/dev/null
+	. "${_CONFIG_DIR}/config.local"
+fi
+
+# When a home SSID is configured, turn off the Patchbox AP hotspot so the
+# radio can join your network. Set FORCE_WIFI_HOTSPOT=1 in config.local to
+# keep the hotspot enabled anyway.
+if [ -n "${WPA_ESSID}" ] && [ "${FORCE_WIFI_HOTSPOT:-0}" != "1" ]; then
+	ENABLE_WIFI_HOTSPOT=0
+fi

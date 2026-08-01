@@ -1,0 +1,17 @@
+# RK-00pi appliance (SDL KMS/DRM kiosk + ALSA MIDI + optional GPIO gates)
+python3-venv
+python3-dev
+python3-pip
+build-essential
+libasound2-dev
+libgpiod-dev
+libsdl2-dev
+libsdl2-image-dev
+libsdl2-mixer-dev
+libsdl2-ttf-dev
+libfreetype6-dev
+libjpeg-dev
+libportmidi-dev
+libdrm2
+libgbm1
+rsync

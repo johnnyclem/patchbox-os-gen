@@ -3,3 +3,6 @@ work/
 deploy/
 apt-cacher-ng/
 .git/objects/*
+# Never bake WiFi secrets into the pi-gen Docker image layer
+config.local
+*.local

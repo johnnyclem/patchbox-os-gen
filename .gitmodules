@@ -1,0 +1,3 @@
+[submodule "RK-00pi"]
+	path = RK-00pi
+	url = git@github.com:johnnyclem/RK-00pi.git
