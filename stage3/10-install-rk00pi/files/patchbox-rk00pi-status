@@ -8,6 +8,9 @@ echo
 
 if [ -d /opt/rk00pi ]; then
 	echo "install: /opt/rk00pi present"
+	if [ -f /opt/rk00pi/.patchbox-source-commit ]; then
+		echo "commit:  $(cat /opt/rk00pi/.patchbox-source-commit)"
+	fi
 	if [ -x /opt/rk00pi/venv/bin/python ]; then
 		echo "python:  $(/opt/rk00pi/venv/bin/python -V 2>&1)"
 		/opt/rk00pi/venv/bin/python - <<'PY' 2>/dev/null || echo "imports:  (partial — run under service for full path)"
@@ -29,8 +32,14 @@ echo
 
 if [ -f /etc/rk00pi/config.toml ]; then
 	echo "config:  /etc/rk00pi/config.toml"
-	grep -E '^(width|height|fullscreen|data_dir|driver|backend|prefer_pisound)' \
+	grep -E '^(width|height|fullscreen|data_dir|driver|backend|prefer_pisound|enabled|socket)' \
 		/etc/rk00pi/config.toml 2>/dev/null | sed 's/^/  /' || true
+	if grep -q '^\[button\.map\]' /etc/rk00pi/config.toml 2>/dev/null; then
+		echo "  [button.map]"
+		# Print mapped gestures until the next table header.
+		awk '/^\[button\.map\]/{p=1;next} /^\[/{p=0} p && /^[A-Z_]/{print "    "$0}' \
+			/etc/rk00pi/config.toml 2>/dev/null || true
+	fi
 else
 	echo "config:  missing"
 fi
@@ -44,9 +53,37 @@ else
 fi
 echo
 
+echo "=== The Button (PiSound) ==="
+if [ -x /usr/local/bin/rk00pi-btn ]; then
+	echo "client:  /usr/local/bin/rk00pi-btn present"
+else
+	echo "client:  rk00pi-btn MISSING (re-run stage or deploy/install.sh)"
+fi
+if [ -f /etc/pisound.conf ]; then
+	echo "pisound.conf click/hold map:"
+	grep -E '^(CLICK_|HOLD_)' /etc/pisound.conf 2>/dev/null | sed 's/^/  /' || \
+		echo "  (no CLICK_*/HOLD_* lines)"
+else
+	echo "pisound.conf: missing"
+fi
+if [ -S /run/rk00pi/button.sock ]; then
+	echo "socket:  /run/rk00pi/button.sock (live)"
+	if command -v rk00pi-btn >/dev/null 2>&1; then
+		echo -n "  ping:  "
+		rk00pi-btn PING 2>&1 || true
+		echo "  live map:"
+		rk00pi-btn --map 2>&1 | sed 's/^/    /' || true
+	fi
+else
+	echo "socket:  /run/rk00pi/button.sock absent (is rk00pi running?)"
+fi
+echo
+
 echo "default target: $(systemctl get-default 2>/dev/null || echo '?')"
 echo "display mode (cmdline):"
-grep -oE 'video=HDMI-A-[12]:[^ ]+' /boot/firmware/cmdline.txt 2>/dev/null | sed 's/^/  /' || echo "  (none)"
+grep -oE 'video=HDMI-A-[12]:[^ ]+' /boot/firmware/cmdline.txt 2>/dev/null | sed 's/^/  /' || \
+	grep -oE 'video=HDMI-A-[12]:[^ ]+' /boot/cmdline.txt 2>/dev/null | sed 's/^/  /' || \
+	echo "  (none)"
 echo
 echo "MIDI / audio (best-effort):"
 amidi -l 2>/dev/null | sed 's/^/  /' || true
@@ -54,4 +91,5 @@ aplay -l 2>/dev/null | head -20 | sed 's/^/  /' || true
 echo
 echo "Hints: journalctl -u rk00pi -b -n 80"
 echo "       sudo systemctl restart rk00pi"
-echo "       Desktop: sudo systemctl start lightdm  (stops competing with kmsdrm if needed)"
+echo "       rk00pi-btn PING · rk00pi-btn --map · rk00pi-btn --list"
+echo "       Desktop: sudo systemctl start lightdm  (stop rk00pi first if needed)"

@@ -84,12 +84,72 @@ sed -i \
 	"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
 
 # --- systemd unit ------------------------------------------------------------
+# Includes RuntimeDirectory=rk00pi for The Button socket (/run/rk00pi/button.sock).
 install -d "${ROOTFS_DIR}/usr/lib/systemd/system"
 install -m 644 "${RK_SRC}/deploy/rk00pi.service" \
 	"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"
 if [ "${APP_USER}" != "rk00pi" ]; then
 	sed -i "s/^User=rk00pi$/User=${APP_USER}/" \
 		"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"
+fi
+
+# --- The Button (PiSound) ----------------------------------------------------
+# pisound-btn (stage3/02) runs action scripts as root under system python.
+# RK-00pi opens a Unix socket; a stdlib client + thin shell wrappers bridge
+# the daemon to the app. Gesture→action map lives in config.toml [button.map]:
+#   CLICK_1 → play_stop · CLICK_2 → record_toggle
+#   HOLD_1S → save_project · HOLD_5S → panic
+# (see /opt/rk00pi/docs/USER.md §The Button). ENABLE_RK00PI_BUTTON=0 skips.
+PISOUND_CONF="${ROOTFS_DIR}/etc/pisound.conf"
+PISOUND_SCRIPTS="${ROOTFS_DIR}/usr/local/pisound/scripts/pisound-btn"
+BUTTON_CLIENT="${ROOTFS_DIR}/usr/local/bin/rk00pi-btn"
+BUTTON_BACKUP="${ROOTFS_DIR}/etc/pisound.conf.rk00pi.bak"
+BUTTON_SRC="${RK_SRC}/deploy/pisound"
+
+set_pisound_action() { # $1 conf path, $2 action id, $3 on-device script path
+	local conf="$1" action="$2" script="$3"
+	if grep -qE "^${action}[[:space:]]" "${conf}" 2>/dev/null; then
+		sed -i "s|^${action}[[:space:]].*|${action} ${script}|" "${conf}"
+	else
+		printf '%s %s\n' "${action}" "${script}" >> "${conf}"
+	fi
+}
+
+if [ "${ENABLE_RK00PI_BUTTON:-1}" = "1" ]; then
+	if [ ! -f "${BUTTON_SRC}/rk00pi-btn" ]; then
+		echo "WARNING: ${BUTTON_SRC}/rk00pi-btn missing — The Button not wired"
+	else
+		echo "Installing PiSound Button bridge → rk00pi-btn + pisound-btn scripts"
+		install -d "$(dirname "${BUTTON_CLIENT}")"
+		install -m 755 "${BUTTON_SRC}/rk00pi-btn" "${BUTTON_CLIENT}"
+		install -d "${PISOUND_SCRIPTS}"
+		install -m 755 "${BUTTON_SRC}"/rk00pi_*.sh "${PISOUND_SCRIPTS}/"
+
+		# Preserve the first pre-RK map so a later uninstall can restore it.
+		if [ -f "${PISOUND_CONF}" ] && [ ! -f "${BUTTON_BACKUP}" ]; then
+			cp "${PISOUND_CONF}" "${BUTTON_BACKUP}"
+		fi
+		# Ensure the conf file exists even if the package left it out.
+		if [ ! -f "${PISOUND_CONF}" ]; then
+			install -d "$(dirname "${PISOUND_CONF}")"
+			: > "${PISOUND_CONF}"
+		fi
+
+		ON_DEVICE_SCRIPTS=/usr/local/pisound/scripts/pisound-btn
+		for action in CLICK_1 CLICK_2 CLICK_3 CLICK_OTHER; do
+			set_pisound_action "${PISOUND_CONF}" "${action}" \
+				"${ON_DEVICE_SCRIPTS}/rk00pi_click.sh"
+		done
+		for action in HOLD_1S HOLD_3S HOLD_5S HOLD_OTHER; do
+			set_pisound_action "${PISOUND_CONF}" "${action}" \
+				"${ON_DEVICE_SCRIPTS}/rk00pi_hold.sh"
+		done
+		# DOWN/UP stay on pisound's own scripts (held-button LED blink).
+		echo "  mapped CLICK_*/HOLD_* → rk00pi_{click,hold}.sh"
+		echo "  live map: /etc/rk00pi/config.toml [button.map]"
+	fi
+else
+	echo "ENABLE_RK00PI_BUTTON!=1 — leaving /etc/pisound.conf alone"
 fi
 
 # --- helper CLI --------------------------------------------------------------
@@ -107,10 +167,19 @@ What boots
   SDL_VIDEODRIVER=kmsdrm fullscreen on the HDMI ${W}x${H} panel
   Pisound = MIDI DIN + 1/4" audio (prefer_pisound=true)
 
+The Button (PiSound board)
+  1 click     play / stop transport
+  2 clicks    record toggle
+  hold ~1 s   save project
+  hold ~5 s   panic (all notes off)
+  Re-map in /etc/rk00pi/config.toml under [button.map]
+  Checks:  rk00pi-btn PING · rk00pi-btn --map · rk00pi-btn --list
+
 Paths
   app:     /opt/rk00pi
   data:    /var/lib/rk00pi   (projects, presets, maps, autosave)
   config:  /etc/rk00pi/config.toml
+  socket:  /run/rk00pi/button.sock
   unit:    systemctl status rk00pi
 
 Checks

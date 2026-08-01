@@ -1,6 +1,6 @@
 # Handoff — Patchbox OS gen (Pi 5 + Pisound + HDMI + RK-00pi)
 
-**Date:** 2026-07-31  
+**Date:** 2026-08-01  
 **Branch:** `patchbox-2024-01`  
 **Repo:** `/Users/johnnyclem/Desktop/Repos/patchbox-os-gen`
 
@@ -13,20 +13,25 @@ Raspberry Pi 5
   ├── Blokas Pisound (40-pin HAT)
   │     • 1/4" audio in/out
   │     • MIDI DIN in/out
+  │     • The Button → RK-00pi gestures (play/stop, record, save, panic)
   │     • Patchbox / JACK path available
   ├── HDMI bar / ultrawide monitor 1280×400
   │     • Video: HDMI
   │     • Touch: USB HID
   └── RK-00pi (main appliance UI)
         • SDL KMS/DRM kiosk (no X required)
+        • 1280×400 light-industrial touch UI (side transport + tab rails)
         • RK-008 / RK-006 / RK-004 style sequencer + MIDI hub
-        • systemd: rk00pi.service (Type=notify)
+        • systemd: rk00pi.service (Type=notify, RuntimeDirectory for button sock)
 ```
 
 No GPIO display. Pisound owns the header for audio/MIDI. Display does not compete for pins.
 
 **App source:** git submodule `RK-00pi` → `git@github.com:johnnyclem/RK-00pi.git`  
 Baked into the image by `stage3/10-install-rk00pi` as `/opt/rk00pi`.
+
+**Submodule tip (2026-08-01):** `15e389a` — designer UI pass + PiSound Button (M10).  
+Shipped default map: `CLICK_1=play_stop`, `CLICK_2=record_toggle`, `HOLD_1S=save_project`, `HOLD_5S=panic`.
 
 ---
 
@@ -36,6 +41,7 @@ Baked into the image by `stage3/10-install-rk00pi` as `/opt/rk00pi`.
 |----------|---------|---------|
 | `ENABLE_RK00PI` | **1** | Install main app from submodule |
 | `ENABLE_RK00PI_SERVICE` | **1** | `systemctl enable rk00pi` |
+| `ENABLE_RK00PI_BUTTON` | **1** | Wire pisound-btn → RK-00pi socket |
 | `RK00PI_WIDTH` / `HEIGHT` | (HDMI dims) | `/etc/rk00pi/config.toml` panel size |
 | `ENABLE_HDMI_ULTRAWIDE` | **1** | Custom HDMI mode **1280×400@60** |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Override if panel differs |
@@ -60,7 +66,7 @@ Boot default remains **multi-user.target** (console) so kmsdrm can own the panel
 | `07-install-raspiaudio` | off | I2S audio HAT (legacy) |
 | `08-install-waveshare-dpi` | off | GPIO DPI 640×480 (legacy) |
 | `09-hdmi-ultrawide` | **on** | HDMI CVT + cmdline + touch + docs |
-| `10-install-rk00pi` | **on** | **Main app** from `RK-00pi` submodule |
+| `10-install-rk00pi` | **on** | **Main app** + The Button bridge from `RK-00pi` |
 
 ### RK-00pi layout on the image
 
@@ -68,8 +74,23 @@ Boot default remains **multi-user.target** (console) so kmsdrm can own the panel
 |------|---------|
 | `/opt/rk00pi/` | App + venv |
 | `/var/lib/rk00pi/` | Writable projects / presets / maps / autosave |
-| `/etc/rk00pi/config.toml` | Panel size + engine/MIDI/gates |
-| `rk00pi.service` | Kiosk unit (`SDL_VIDEODRIVER=kmsdrm`) |
+| `/etc/rk00pi/config.toml` | Panel size + engine/MIDI/gates + `[button.map]` |
+| `/run/rk00pi/button.sock` | The Button control socket (tmpfs, per boot) |
+| `/usr/local/bin/rk00pi-btn` | stdlib client called by pisound-btn scripts |
+| `/etc/pisound.conf` | PiSound gesture → `rk00pi_{click,hold}.sh` (`.rk00pi.bak` backup) |
+| `rk00pi.service` | Kiosk unit (`SDL_VIDEODRIVER=kmsdrm`, `RuntimeDirectory=rk00pi`) |
+
+### The Button — default gestures
+
+| Gesture | Action | Meaning |
+|---------|--------|---------|
+| 1 click | `play_stop` | Start / stop transport |
+| 2 clicks | `record_toggle` | Record enable / punch |
+| hold ~1 s | `save_project` | Save session |
+| hold ~5 s | `panic` | All notes off |
+| other gestures | `nothing` | Safe defaults; rebind in `[button.map]` |
+
+Safety net: if the instrument is not listening and the user holds past ~7 s, `rk00pi_hold.sh` still falls through to `shutdown` so a crashed unit is never stranded.
 
 Update submodule then rebuild:
 
@@ -168,11 +189,12 @@ After boot: `ssh patch@patchbox.local` (or the DHCP IP). Password: `blokaslabs` 
 
 1. Pisound seated on 40-pin; HDMI + USB touch to ultrawide  
 2. Pi joins preconfigured WiFi → `ssh patch@patchbox.local`  
-3. Panel should show **RK-00pi** Launch grid (not only desktop)  
-4. `patchbox-rk00pi-status` → unit active, imports OK  
-5. `aplay -l` / `amidi -l` → Pisound present  
-6. `patchbox-display-status` → HDMI mode / touch  
-7. `cat ~/RK-00PI.txt` / `~/DISPLAY-PISOUND.txt`
+3. Panel should show **RK-00pi** Launch grid (light industrial UI, side rails)  
+4. `patchbox-rk00pi-status` → unit active, imports OK, button socket + map  
+5. `rk00pi-btn PING` → `OK ping pong …`; one-click → transport toggles  
+6. `aplay -l` / `amidi -l` → Pisound present  
+7. `patchbox-display-status` → HDMI mode / touch  
+8. `cat ~/RK-00PI.txt` / `~/DISPLAY-PISOUND.txt`
 
 Optional desktop: `sudo systemctl stop rk00pi && sudo systemctl start lightdm`  
 (kmsdrm and X cannot both own the panel.)
@@ -183,8 +205,9 @@ Optional desktop: `sudo systemctl stop rk00pi && sudo systemctl start lightdm`
 
 1. Flash image and soak first-boot to RK-00pi UI on real 1280×400 panel  
 2. Verify Pisound DIN MIDI + prefer_pisound path in journal  
-3. Gate driver still `null` until buffered stage is signed off  
-4. Pimidi only if pins free with Pisound (or USB MIDI)
+3. On-device pass for The Button (CI has no pisound-btn hardware)  
+4. Gate driver still `null` until buffered stage is signed off  
+5. Pimidi only if pins free with Pisound (or USB MIDI)
 
 ---
 

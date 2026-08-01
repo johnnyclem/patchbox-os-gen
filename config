@@ -34,6 +34,9 @@ HDMI_REFRESH="${HDMI_REFRESH:-60}"
 # Boots multi-user.target → rk00pi.service (SDL kmsdrm fullscreen).
 ENABLE_RK00PI="${ENABLE_RK00PI:-1}"
 ENABLE_RK00PI_SERVICE="${ENABLE_RK00PI_SERVICE:-1}"
+# Map The Button (pisound-btn) → RK-00pi socket: play/stop, record, save, panic.
+# Set 0 to leave /etc/pisound.conf alone (matches deploy/install.sh --no-button).
+ENABLE_RK00PI_BUTTON="${ENABLE_RK00PI_BUTTON:-1}"
 RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
 # Empty width/height → stage uses HDMI_WIDTH / HDMI_HEIGHT (1280x400).

@@ -425,7 +425,7 @@ This fork bakes in a set of low-latency-audio defaults on top of upstream pi-gen
 ### Primary stack: Pisound + HDMI 1280×400 + RK-00pi
 
 ```text
-Pi 5 + Pisound (40-pin: 1/4" I/O, MIDI DIN)
+Pi 5 + Pisound (40-pin: 1/4" I/O, MIDI DIN, The Button)
     + HDMI bar monitor 1280×400 + USB touch
     + RK-00pi kiosk (main appliance — sequencer / MIDI hub)
 ```
@@ -433,6 +433,9 @@ Pi 5 + Pisound (40-pin: 1/4" I/O, MIDI DIN)
 **Main app** is the git submodule [`RK-00pi`](https://github.com/johnnyclem/RK-00pi)
 (`git@github.com:johnnyclem/RK-00pi.git`), installed by `stage3/10-install-rk00pi`
 into `/opt/rk00pi` with `rk00pi.service` (SDL `kmsdrm`, multi-user boot).
+The same stage maps **The Button** (`pisound-btn` → `/run/rk00pi/button.sock`):
+single press toggles transport, double-click records, ~1 s hold saves, ~5 s hold panics.
+Rebind under `/etc/rk00pi/config.toml` `[button.map]`; skip with `ENABLE_RK00PI_BUTTON=0`.
 
 ```bash
 git submodule update --init --recursive
@@ -461,6 +464,7 @@ e-paper, RaspiAudio I2S — each conflicts with Pisound and/or the chosen UI.
 |----------|---------|---------|
 | `ENABLE_RK00PI` | `1` | Install RK-00pi from submodule |
 | `ENABLE_RK00PI_SERVICE` | `1` | Enable kiosk unit at boot |
+| `ENABLE_RK00PI_BUTTON` | `1` | Wire PiSound Button → RK-00pi gestures |
 | `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Panel geometry |
 | `ENABLE_WAVESHARE_DPI` | `0` | GPIO DPI (conflicts with Pisound) |
