@@ -7,3 +7,6 @@ SKIP_IMAGES
 *-pc
 apt-cacher-ng/
 .DS_Store
+# Local secrets (WiFi SSID/password) — never commit
+config.local
+config.local
