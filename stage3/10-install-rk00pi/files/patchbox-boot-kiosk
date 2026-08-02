@@ -1,0 +1,15 @@
+#!/bin/bash
+# Switch this appliance to RK-00pi kiosk boot (no LightDM desktop).
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
+systemctl set-default multi-user.target
+systemctl enable rk00pi.service
+systemctl disable lightdm.service 2>/dev/null || true
+ln -sfn /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+systemctl stop lightdm.service 2>/dev/null || true
+pkill -9 Xorg 2>/dev/null || true
+systemctl restart rk00pi.service || true
+echo "default=$(systemctl get-default)"
+echo "rk00pi=$(systemctl is-enabled rk00pi)/$(systemctl is-active rk00pi)"
+echo "lightdm=$(systemctl is-enabled lightdm 2>&1)/$(systemctl is-active lightdm 2>&1)"
+echo "Reboot to confirm clean boot path: sudo reboot"

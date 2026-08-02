@@ -8,22 +8,31 @@
 
 ## Current product stack
 
+### Profile A — HDMI ultrawide (default `config`)
+
 ```text
 Raspberry Pi 5
-  ├── Blokas Pisound (40-pin HAT)
-  │     • 1/4" audio in/out
-  │     • MIDI DIN in/out
-  │     • The Button → RK-00pi gestures (play/stop, record, save, panic)
-  │     • Patchbox / JACK path available
-  ├── HDMI bar / ultrawide monitor 1280×400 (ElecLab reference)
-  │     • Video: HDMI
-  │     • Touch: USB HID (separate USB-A cable — HDMI alone has no touch)
-  └── RK-00pi (main appliance UI)
-        • SDL KMS/DRM kiosk (no X required)
-        • 1280×400 light-industrial touch UI (side transport + tab rails)
-        • RK-008 / RK-006 / RK-004 style sequencer + MIDI hub
-        • systemd: rk00pi.service (Type=notify, RuntimeDirectory for button sock)
+  ├── Blokas Pimidi (sel=0) — 2×2 TRS MIDI
+  ├── HDMI 1280×400 + USB touch (ElecLab ILI)
+  └── RK-00pi kiosk · hub pimidi-2x2 · soft tape
 ```
+
+### Profile B — HyperPixel 4.0" DPI (`config.hyperpixel4-pimidi.example`)
+
+```text
+Raspberry Pi 5
+  ├── Blokas Pimidi (sel=0) — 2×2 TRS MIDI  ⚠ pin-contested with DPI
+  ├── Pimoroni HyperPixel 4.0" rectangular
+  │     • 800×480 @ 60 FPS DPI (dtoverlay=vc4-kms-dpi-hyperpixel4)
+  │     • Goodix capacitive touch
+  └── RK-00pi 800×480 (portrait chrome — aspect < 2:1)
+```
+
+**GPIO warning:** HyperPixel 4 DPI uses almost the entire 40-pin. Pimidi needs
+I2C + a data GPIO. Stacking both may leave Pimidi silent — verify with
+`amidi -l` / `patchbox-pimidi-status`. Fallbacks: USB MIDI, or HDMI bar + Pimidi.
+
+**Parked:** Pisound (audio + The Button).
 
 No GPIO display. Pisound owns the header for audio/MIDI. Display does not compete for pins.
 
@@ -52,7 +61,9 @@ Shipped default map: `CLICK_1=play_stop`, `CLICK_2=record_toggle`, `HOLD_1S=save
 | `RASPBIAN_MIRROR` | Berkeley OCF | Avoid flaky primary Raspbian |
 
 Stages always install Pisound packages (`stage3/02-install-pisound`) — that is the audio story.  
-Boot default remains **multi-user.target** (console) so kmsdrm can own the panel.
+Boot default remains **multi-user.target** (console + `rk00pi`) so kmsdrm can
+own the panel. LightDM must stay **disabled** — `graphical.target` starts X and
+kmsdrm fails with `pygame.error: kmsdrm not available`.
 
 ---
 
@@ -230,6 +241,7 @@ Optional desktop: `sudo systemctl stop rk00pi && sudo systemctl start lightdm`
 | UI looks great, **touch dead** | missing `input` group / unit groups / no USB | **`sudo patchbox-fix-input-button`** then **`sudo patchbox-touch-probe`** |
 | probe sees **no** events | USB unplugged, bad port, or dead controller | Plug ElecLab USB; try USB2 port; `lsusb` + `/proc/bus/input/devices` |
 | probe sees events, UI still dead | old app (no FINGER→mouse) or wrong SDL env | scp updated `gui/app.py` + re-run fix script; or re-flash |
+| MIDI IN LEDs flash, **din_in unbound / no notes** | Patchbox **amidiauto** `*→*` races binds (EBUSY) | `sudo systemctl disable --now amidiauto`; restart rk00pi (fixed in `midi_alsa.py` too) |
 | **The Button** does nothing | `pisound-btn` inactive, conf not mapped, or no socket | same one-shot; then `rk00pi-btn PING` |
 | Button LEDs flash long, no transport | Socket missing (rk00pi down) | `systemctl status rk00pi`; journal for “button listening” |
 | No `/sys/kernel/pisound` | HAT/driver not loaded | Reseat HAT; `lsmod \| grep pisound`; Pisound package/overlay |

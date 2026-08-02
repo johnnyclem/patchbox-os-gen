@@ -1,0 +1,3 @@
+# HyperPixel 4 Goodix touch → group input (SDL kmsdrm)
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Goodix*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", MODE="0660", GROUP="input", TAG+="uaccess"
