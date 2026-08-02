@@ -191,10 +191,12 @@ fi
 # --- helper CLI --------------------------------------------------------------
 install -m 755 files/patchbox-rk00pi-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-rk00pi-status"
-# One-shot field repair: dead touch (missing `input` group) + The Button.
-install -d "${ROOTFS_DIR}/usr/local/sbin"
+# One-shot field repair + read-only diagnostics for dead touch / The Button.
+install -d "${ROOTFS_DIR}/usr/local/sbin" "${ROOTFS_DIR}/usr/local/bin"
 install -m 755 files/patchbox-fix-input-button \
 	"${ROOTFS_DIR}/usr/local/sbin/patchbox-fix-input-button"
+install -m 755 files/patchbox-diag-input-button \
+	"${ROOTFS_DIR}/usr/local/bin/patchbox-diag-input-button"
 
 # Brief note for the login user (alongside DISPLAY-PISOUND.txt)
 install -d "${ROOTFS_DIR}/home/${FIRST_USER_NAME}"

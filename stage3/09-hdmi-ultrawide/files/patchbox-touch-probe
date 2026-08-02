@@ -91,6 +91,48 @@ pick_event() {
 	ls /dev/input/event* 2>/dev/null | head -1 || true
 }
 
+# Hard stop when no USB peripheral is present (only root hubs).
+# ElecLab = HDMI video + USB touch; without USB the kernel has nothing to listen to.
+USB_PERIPH=0
+if command -v lsusb >/dev/null 2>&1; then
+	# Count non-hub devices (Linux Foundation root hubs are 1d6b:0002/0003)
+	USB_PERIPH=$(lsusb 2>/dev/null | grep -vcE '1d6b:000[23]|Linux Foundation [23]\.0 root hub' || true)
+	USB_PERIPH=$(printf '%s' "${USB_PERIPH}" | tr -cd '0-9')
+	USB_PERIPH=${USB_PERIPH:-0}
+fi
+TOUCH_LIKE=0
+if [ -r /proc/bus/input/devices ] && \
+	grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts|HID Touch' \
+		/proc/bus/input/devices 2>/dev/null; then
+	TOUCH_LIKE=1
+fi
+
+if [ "${USB_PERIPH}" -eq 0 ] || [ "${TOUCH_LIKE}" -eq 0 ]; then
+	bad "No USB touch controller is visible to the Pi"
+	echo
+	warn "ElecLab 1280×400 needs TWO cables from the panel:"
+	info "  1) HDMI  → video"
+	info "  2) USB-A → capacitive touch (Cortex-M4 HID on the panel PCB)"
+	echo
+	info "What we see now:"
+	info "  lsusb non-hub devices: ${USB_PERIPH}"
+	info "  touch-like input name: $([ "${TOUCH_LIKE}" -eq 1 ] && echo yes || echo no)"
+	info "  input nodes: only power button + HDMI CEC/jack (no touch)"
+	echo
+	warn "Do this, then re-run: sudo patchbox-touch-probe"
+	info "  • Find the USB cable/port on the ElecLab board (often micro-USB or USB-A)"
+	info "  • Plug it into a Pi USB-A port (prefer a blue USB3 or black USB2 — try both)"
+	info "  • Reseat HDMI if the panel is externally powered and share grounds"
+	info "  • After plug:  lsusb ; cat /proc/bus/input/devices | head -40"
+	info "  You should see a new HID/Touch device — not only 1d6b root hubs."
+	# Still list candidate if any, but do not waste 12s on pwr_button.
+	if [ "${USB_PERIPH}" -eq 0 ]; then
+		exit 3
+	fi
+	# USB gadget present but not tagged as touch — continue listen below.
+	warn "USB device(s) present but no touch-like Name= — listening anyway"
+fi
+
 EVENT=$(pick_event || true)
 if [ -z "${EVENT}" ] || [ ! -e "${EVENT}" ]; then
 	bad "No /dev/input/event* node found"
@@ -98,6 +140,17 @@ if [ -z "${EVENT}" ] || [ ! -e "${EVENT}" ]; then
 	warn "Reseat USB to a Pi USB-A port (try USB2 if USB3 is flaky)."
 	exit 1
 fi
+
+# Prefer not to "listen" on pwr_button / HDMI CEC when we know there's no touch.
+case "$(basename "${EVENT}")" in
+	event0)
+		# Common on this image: event0 = pwr_button — useless for panel taps.
+		if [ "${TOUCH_LIKE}" -eq 0 ]; then
+			bad "Best event node is ${EVENT} (likely pwr_button) — no touch HID"
+			exit 3
+		fi
+		;;
+esac
 
 info "candidate device: ${EVENT}"
 if [ -r /proc/bus/input/devices ]; then
@@ -140,21 +193,7 @@ if command -v timeout >/dev/null 2>&1 && command -v evtest >/dev/null 2>&1; then
 	fi
 fi
 
-# Fallback: hexdump a few reads (works without evtest)
-if command -v timeout >/dev/null 2>&1; then
-	info "(evtest missing — raw read; install: sudo apt install evtest)"
-	if timeout "${TIMEOUT}" dd if="${EVENT}" bs=24 count=8 status=none 2>/dev/null | wc -c | awk '{print "  bytes read: "$1}'; then
-		:
-	fi
-	# If we got any bytes, something moved
-	bytes=$(timeout 1 dd if="${EVENT}" bs=24 count=1 status=none 2>/dev/null | wc -c || echo 0)
-	if [ "${bytes:-0}" -gt 0 ]; then
-		ok "raw bytes from ${EVENT} — device is producing events"
-		exit 0
-	fi
-fi
-
-# Last resort: python struct read via /dev/input if available
+# Last resort: python struct read via /dev/input (no evtest / no fragile wc -c)
 if command -v python3 >/dev/null 2>&1; then
 	info "python3 listen ${TIMEOUT}s…"
 	if python3 - "${EVENT}" "${TIMEOUT}" <<'PY'

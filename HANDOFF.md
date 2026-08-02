@@ -234,28 +234,27 @@ Optional desktop: `sudo systemctl stop rk00pi && sudo systemctl start lightdm`
 | Button LEDs flash long, no transport | Socket missing (rk00pi down) | `systemctl status rk00pi`; journal for “button listening” |
 | No `/sys/kernel/pisound` | HAT/driver not loaded | Reseat HAT; `lsmod \| grep pisound`; Pisound package/overlay |
 
-### One-shot repair (live Pi, no re-flash)
+### Live repair (no re-flash) — preferred when both touch + button are dead
 
-Script path on image: `/usr/local/sbin/patchbox-fix-input-button`  
-Source (scp to an already-flashed card):
+The **flashed image** often still has an older `/opt/rk00pi/gui/app.py` without
+FINGER→mouse. Group/`input` alone is not enough for USB-HID under kmsdrm.
 
 ```bash
-# from patchbox-os-gen checkout
-scp stage3/10-install-rk00pi/files/patchbox-fix-input-button \
-  patch@patchbox.local:/tmp/
-ssh patch@patchbox.local 'sudo bash /tmp/patchbox-fix-input-button'
-# preview only:
-ssh patch@patchbox.local 'sudo bash /tmp/patchbox-fix-input-button --dry-run'
+# from patchbox-os-gen checkout (password prompts OK)
+./scripts/live-repair-pi.sh
+# or: ./scripts/live-repair-pi.sh patch@192.168.50.190
+# diag only (no changes):
+./scripts/live-repair-pi.sh --diag-only
 ```
 
-What it does: `usermod -aG input rk00pi`, systemd drop-in for
-`SupplementaryGroups=… input` + `RuntimeDirectoryMode=0755` +
-`SDL_TOUCH_MOUSE_EVENTS` (0 if app has FINGER bridge, else 1), installs
-`99-patchbox-touch.rules`, maps `/etc/pisound.conf` →
-`rk00pi_{click,hold}.sh`, enables `pisound-btn`, restarts both units,
-prints `rk00pi-btn PING`.
+Pushes: `gui/app.py` (FINGER bridge), `rk00pi.service` + drop-in, broad
+udev rules, button client/scripts/conf, then prints a full DIAG block.
 
-### Field-update touch path without full re-flash
+Also: `sudo patchbox-fix-input-button` · `sudo patchbox-diag-input-button`
+
+**Hardware:** bar panels need **HDMI + USB**. HDMI alone = picture, no touch.
+
+### Field-update touch path (manual)
 
 ```bash
 # from patchbox-os-gen checkout

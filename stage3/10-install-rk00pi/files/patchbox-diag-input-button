@@ -1,0 +1,147 @@
+#!/bin/bash
+# patchbox-diag-input-button — dump everything needed to debug dead touch/button.
+# Safe read-only (except needs root for some systemctl/journal lines).
+#   sudo patchbox-diag-input-button | tee /tmp/patchbox-diag.txt
+set -u
+
+banner() { printf '\n======== %s ========\n' "$*"; }
+line()   { printf '  %s\n' "$*"; }
+
+[ "$(id -u)" -eq 0 ] || { echo "re-run with sudo for full report"; echo; }
+
+banner "host"
+line "date: $(date -Is 2>/dev/null || date)"
+line "host: $(hostname) $(uname -r)"
+line "user: $(whoami)"
+
+banner "rk00pi user / groups"
+if id rk00pi >/dev/null 2>&1; then
+	line "id: $(id rk00pi)"
+	line "groups: $(id -nG rk00pi)"
+	if id -nG rk00pi | tr ' ' '\n' | grep -qx input; then
+		line "input group: YES"
+	else
+		line "input group: NO  ← touch will fail under kmsdrm"
+	fi
+else
+	line "rk00pi user MISSING"
+fi
+
+banner "rk00pi.service"
+if systemctl cat rk00pi.service >/dev/null 2>&1; then
+	line "enabled: $(systemctl is-enabled rk00pi 2>/dev/null || echo '?')"
+	line "active:  $(systemctl is-active rk00pi 2>/dev/null || echo '?')"
+	line "fragment: $(systemctl show -p FragmentPath --value rk00pi 2>/dev/null)"
+	line "SupplementaryGroups: $(systemctl show -p SupplementaryGroups --value rk00pi 2>/dev/null)"
+	line "Environment: $(systemctl show -p Environment --value rk00pi 2>/dev/null)"
+	line "User: $(systemctl show -p User --value rk00pi 2>/dev/null)"
+	line "MainPID: $(systemctl show -p MainPID --value rk00pi 2>/dev/null)"
+	echo "--- drop-ins ---"
+	systemctl cat rk00pi.service 2>/dev/null | head -80
+else
+	line "unit MISSING"
+fi
+
+banner "app finger bridge"
+if [ -f /opt/rk00pi/gui/app.py ]; then
+	if grep -q '_finger_to_mouse' /opt/rk00pi/gui/app.py; then
+		line "FINGER→mouse: PRESENT in /opt/rk00pi/gui/app.py"
+	else
+		line "FINGER→mouse: ABSENT  ← ElecLab taps die under kmsdrm (need live-repair)"
+	fi
+	line "mtime: $(stat -c '%y' /opt/rk00pi/gui/app.py 2>/dev/null || stat -f '%Sm' /opt/rk00pi/gui/app.py 2>/dev/null)"
+else
+	line "/opt/rk00pi/gui/app.py MISSING"
+fi
+
+banner "button stack"
+line "rk00pi-btn: $(command -v rk00pi-btn 2>/dev/null || echo MISSING)"
+line "pisound-btn unit: $(systemctl is-enabled pisound-btn 2>/dev/null || echo '?') / $(systemctl is-active pisound-btn 2>/dev/null || echo '?')"
+if [ -S /run/rk00pi/button.sock ]; then
+	line "socket: /run/rk00pi/button.sock LIVE  mode=$(stat -c '%a %U:%G' /run/rk00pi/button.sock 2>/dev/null || echo '?')"
+	if command -v rk00pi-btn >/dev/null 2>&1; then
+		line "PING: $(rk00pi-btn PING 2>&1 || true)"
+		line "MAP:"
+		rk00pi-btn --map 2>&1 | sed 's/^/    /' || true
+	fi
+else
+	line "socket: ABSENT"
+	ls -la /run/rk00pi 2>/dev/null | sed 's/^/    /' || line "/run/rk00pi missing"
+fi
+if [ -d /sys/kernel/pisound ]; then
+	line "sysfs: /sys/kernel/pisound present"
+	[ -r /sys/kernel/pisound/version ] && line "version: $(cat /sys/kernel/pisound/version 2>/dev/null)"
+	ls /sys/kernel/pisound 2>/dev/null | sed 's/^/    /'
+else
+	line "sysfs: /sys/kernel/pisound ABSENT  ← HAT/driver not loaded; button GPIO dead"
+fi
+if [ -f /etc/pisound.conf ]; then
+	echo "--- /etc/pisound.conf CLICK/HOLD ---"
+	grep -E '^(CLICK_|HOLD_|DOWN|UP)' /etc/pisound.conf 2>/dev/null | sed 's/^/  /' || line "(none)"
+else
+	line "/etc/pisound.conf MISSING"
+fi
+ls -la /usr/local/pisound/scripts/pisound-btn/rk00pi_*.sh 2>/dev/null | sed 's/^/  /' || line "rk00pi_*.sh missing"
+
+banner "USB + input devices"
+if command -v lsusb >/dev/null 2>&1; then
+	lsusb 2>/dev/null | sed 's/^/  /' || true
+else
+	line "lsusb not installed"
+fi
+echo "--- /proc/bus/input/devices (Name/Handlers) ---"
+if [ -r /proc/bus/input/devices ]; then
+	# compact pairs
+	awk '
+		/^N: Name=/ { name=$0; sub(/^N: Name=/,"",name); gsub(/"/,"",name) }
+		/^H: Handlers=/ { print "  " name "  |  " $0 }
+	' /proc/bus/input/devices
+else
+	line "cannot read /proc/bus/input/devices"
+fi
+echo "--- /dev/input permissions ---"
+ls -la /dev/input/ 2>/dev/null | sed 's/^/  /' || true
+ls -la /dev/input/event* 2>/dev/null | sed 's/^/  /' || line "no event* nodes"
+
+banner "udev touch rules"
+ls -la /etc/udev/rules.d/*touch* /etc/udev/rules.d/*patchbox* 2>/dev/null | sed 's/^/  /' || line "(none)"
+for f in /etc/udev/rules.d/*touch* /etc/udev/rules.d/*patchbox*; do
+	[ -f "$f" ] || continue
+	echo "--- $f ---"
+	sed 's/^/  /' "$f"
+done
+
+banner "display / DRM"
+if [ -f /boot/firmware/config.txt ]; then
+	grep -nE 'hdmi_|dtoverlay=vc4|max_framebuffers' /boot/firmware/config.txt 2>/dev/null | sed 's/^/  /' || true
+fi
+[ -f /boot/firmware/cmdline.txt ] && line "cmdline: $(cat /boot/firmware/cmdline.txt)"
+if [ -d /sys/class/drm ]; then
+	for c in /sys/class/drm/card*-*; do
+		[ -e "$c/status" ] || continue
+		line "$(basename "$c") status=$(cat "$c/status" 2>/dev/null) enabled=$(cat "$c/enabled" 2>/dev/null)"
+	done
+fi
+
+banner "journal (rk00pi + pisound-btn, last boot)"
+journalctl -u rk00pi -u pisound-btn -b -n 60 --no-pager 2>/dev/null | sed 's/^/  /' || true
+
+banner "can rk00pi open input? (best-effort)"
+if id rk00pi >/dev/null 2>&1; then
+	for n in /dev/input/event*; do
+		[ -e "$n" ] || continue
+		if sudo -u rk00pi test -r "$n" 2>/dev/null; then
+			line "READ OK  $n"
+		else
+			line "READ NO  $n  ← SDL cannot use this node"
+		fi
+	done
+fi
+
+banner "hints"
+line "Hardware: ElecLab-style bars need HDMI + USB (touch). HDMI alone = no touch device."
+line "Software: ./scripts/live-repair-pi.sh   # from laptop checkout"
+line "Button software press: rk00pi-btn ACTION play_stop"
+line "Live touch events:     sudo evtest   # pick touchscreen, tap panel"
+echo
+exit 0
