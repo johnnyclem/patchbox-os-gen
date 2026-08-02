@@ -84,13 +84,49 @@ sed -i \
 	"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
 
 # --- systemd unit ------------------------------------------------------------
-# Includes RuntimeDirectory=rk00pi for The Button socket (/run/rk00pi/button.sock).
+# Includes RuntimeDirectory=rk00pi for The Button socket (/run/rk00pi/button.sock)
+# and SupplementaryGroups=… input for USB-HID touch under kmsdrm.
 install -d "${ROOTFS_DIR}/usr/lib/systemd/system"
 install -m 644 "${RK_SRC}/deploy/rk00pi.service" \
 	"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"
 if [ "${APP_USER}" != "rk00pi" ]; then
 	sed -i "s/^User=rk00pi$/User=${APP_USER}/" \
 		"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"
+fi
+# Belt-and-braces: older checkouts may omit `input` from SupplementaryGroups.
+if ! grep -qE '^SupplementaryGroups=.*\binput\b' \
+	"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"; then
+	sed -i 's/^SupplementaryGroups=.*/& input/' \
+		"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"
+	echo "  patched rk00pi.service SupplementaryGroups += input"
+fi
+# Ensure RuntimeDirectoryMode is open enough for local rk00pi-btn as patch.
+if grep -qE '^RuntimeDirectoryMode=0750' \
+	"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"; then
+	sed -i 's/^RuntimeDirectoryMode=0750/RuntimeDirectoryMode=0755/' \
+		"${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"
+	echo "  patched rk00pi.service RuntimeDirectoryMode=0755"
+fi
+# SDL touch env: app maps FINGER→mouse; disable SDL's duplicate synthesis.
+UNIT_FILE="${ROOTFS_DIR}/usr/lib/systemd/system/rk00pi.service"
+if ! grep -qE '^Environment=SDL_TOUCH_MOUSE_EVENTS=' "${UNIT_FILE}"; then
+	if grep -qE '^Environment=SDL_VIDEODRIVER=kmsdrm' "${UNIT_FILE}"; then
+		# Portable insert after the kmsdrm line (no GNU sed \\n tricks).
+		TMPU="$(mktemp)"
+		awk '
+			{ print }
+			/^Environment=SDL_VIDEODRIVER=kmsdrm$/ {
+				print "Environment=SDL_TOUCH_MOUSE_EVENTS=0"
+				print "Environment=SDL_MOUSE_TOUCH_EVENTS=0"
+			}
+		' "${UNIT_FILE}" > "${TMPU}"
+		cat "${TMPU}" > "${UNIT_FILE}"
+		rm -f "${TMPU}"
+	else
+		printf '\nEnvironment=SDL_TOUCH_MOUSE_EVENTS=0\nEnvironment=SDL_MOUSE_TOUCH_EVENTS=0\n' \
+			>> "${UNIT_FILE}"
+	fi
+	echo "  patched rk00pi.service SDL_TOUCH_MOUSE_EVENTS=0"
 fi
 
 # --- The Button (PiSound) ----------------------------------------------------
@@ -155,6 +191,10 @@ fi
 # --- helper CLI --------------------------------------------------------------
 install -m 755 files/patchbox-rk00pi-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-rk00pi-status"
+# One-shot field repair: dead touch (missing `input` group) + The Button.
+install -d "${ROOTFS_DIR}/usr/local/sbin"
+install -m 755 files/patchbox-fix-input-button \
+	"${ROOTFS_DIR}/usr/local/sbin/patchbox-fix-input-button"
 
 # Brief note for the login user (alongside DISPLAY-PISOUND.txt)
 install -d "${ROOTFS_DIR}/home/${FIRST_USER_NAME}"
@@ -186,6 +226,12 @@ Checks
   patchbox-rk00pi-status
   journalctl -u rk00pi -b -n 80
   amidi -l ; aplay -l
+
+Field repair (touch dead / button dead)
+  sudo patchbox-fix-input-button
+  # or: sudo patchbox-fix-input-button --dry-run
+  # live tap test (ElecLab USB must be plugged):
+  sudo patchbox-touch-probe
 
 Update app later (on device, as root)
   cd /opt/rk00pi && git pull   # only if you re-init a git remote
@@ -220,7 +266,10 @@ else
 	useradd -r -m -d "\${DATA_DIR}" -s /usr/sbin/nologin "\${APP_USER}"
 fi
 
-for group in audio gpio render video; do
+# input: USB-HID touch via evdev — required under SDL kmsdrm (without it
+# the panel paints but taps do nothing). Also declared in rk00pi.service
+# SupplementaryGroups=.
+for group in audio gpio render video input; do
 	if getent group "\${group}" >/dev/null 2>&1; then
 		usermod -aG "\${group}" "\${APP_USER}" || true
 	else
@@ -266,6 +315,17 @@ if [ "${ENABLE_RK00PI_SERVICE:-1}" = "1" ]; then
 else
 	systemctl disable rk00pi.service 2>/dev/null || true
 	echo "rk00pi.service installed but disabled (ENABLE_RK00PI_SERVICE!=1)"
+fi
+
+# The Button daemon: package usually enables itself, but be explicit so a
+# partial install never leaves a mapped conf with no listener on the GPIO.
+if [ "${ENABLE_RK00PI_BUTTON:-1}" = "1" ]; then
+	if systemctl cat pisound-btn.service >/dev/null 2>&1; then
+		systemctl enable pisound-btn.service
+		echo "pisound-btn.service enabled"
+	else
+		echo "warning: pisound-btn.service not present — The Button will not fire"
+	fi
 fi
 EOF
 

@@ -1,0 +1,413 @@
+#!/bin/bash
+# patchbox-fix-input-button — one-shot repair for dead touch + The Button.
+#
+# Fixes the field issues seen on the Pisound + ElecLab HDMI kiosk stack:
+#   1) Touch: rk00pi ∈ group `input`, unit SupplementaryGroups=… input,
+#      SDL_TOUCH_MOUSE_EVENTS for FINGER/mouse, udev on /dev/input/event*.
+#      ElecLab panels need HDMI + USB; HDMI alone has no touch.
+#   2) Button: pisound-btn enabled, /etc/pisound.conf mapped to rk00pi-btn,
+#      socket reachable, optional install of bridge scripts if missing.
+#
+# Usage (on the Pi):
+#   sudo patchbox-fix-input-button
+#   sudo patchbox-fix-input-button --dry-run
+#   sudo patchbox-fix-input-button --no-restart
+#
+# From a laptop (copy then run):
+#   scp stage3/10-install-rk00pi/files/patchbox-fix-input-button \
+#       patch@patchbox.local:/tmp/
+#   ssh patch@patchbox.local 'sudo bash /tmp/patchbox-fix-input-button'
+#
+# Safe to re-run: converges on the same state, never wipes user projects.
+set -euo pipefail
+
+APP_USER="${APP_USER:-rk00pi}"
+UNIT_NAME="${UNIT_NAME:-rk00pi.service}"
+PISOUND_CONF="${PISOUND_CONF:-/etc/pisound.conf}"
+PISOUND_SCRIPTS="${PISOUND_SCRIPTS:-/usr/local/pisound/scripts/pisound-btn}"
+BUTTON_CLIENT="${BUTTON_CLIENT:-/usr/local/bin/rk00pi-btn}"
+BUTTON_BACKUP="${BUTTON_BACKUP:-/etc/pisound.conf.rk00pi.bak}"
+# Optional: if bridge scripts are missing, pull from a local tree (scp'd
+# checkout or the baked /opt/rk00pi tree).
+BRIDGE_SRC="${BRIDGE_SRC:-/opt/rk00pi/deploy/pisound}"
+
+DRY_RUN=0
+NO_RESTART=0
+VERBOSE=1
+
+say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
+info() { printf '    %s\n' "$*"; }
+warn() { printf '\033[1;33m!!\033[0m %s\n' "$*" >&2; }
+die()  { printf '\033[1;31mxx\033[0m %s\n' "$*" >&2; exit 1; }
+ok()   { printf '\033[1;32mok\033[0m  %s\n' "$*"; }
+bad()  { printf '\033[1;31mno\033[0m  %s\n' "$*"; }
+
+usage() {
+	sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'
+	exit 0
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--dry-run) DRY_RUN=1; shift ;;
+		--no-restart) NO_RESTART=1; shift ;;
+		--user) APP_USER=$2; shift 2 ;;
+		--bridge-src) BRIDGE_SRC=$2; shift 2 ;;
+		-q|--quiet) VERBOSE=0; shift ;;
+		-h|--help) usage ;;
+		*) die "unknown option: $1 (try --help)" ;;
+	esac
+done
+
+[ "$(id -u)" -eq 0 ] || die "run me with sudo"
+
+run() {
+	if [ "$DRY_RUN" -eq 1 ]; then
+		info "(dry-run) $*"
+		return 0
+	fi
+	"$@"
+}
+
+CHANGED=0
+mark_changed() { CHANGED=1; }
+
+# --- 1. input group (touch) ---------------------------------------------------
+say "Touch: group membership for ${APP_USER}"
+if ! id "${APP_USER}" >/dev/null 2>&1; then
+	die "user ${APP_USER} does not exist — is RK-00pi installed?"
+fi
+
+if getent group input >/dev/null 2>&1; then
+	if id -nG "${APP_USER}" | tr ' ' '\n' | grep -qx input; then
+		ok "${APP_USER} already in group input"
+	else
+		say "adding ${APP_USER} to group input"
+		run usermod -aG input "${APP_USER}"
+		mark_changed
+		ok "usermod -aG input ${APP_USER}"
+	fi
+else
+	warn "group 'input' missing on this system — touch cannot be fixed here"
+fi
+
+# --- 2. unit SupplementaryGroups + RuntimeDirectoryMode + SDL touch env -------
+say "Touch: ${UNIT_NAME} SupplementaryGroups + SDL env"
+UNIT_PATH=""
+if systemctl cat "${UNIT_NAME}" >/dev/null 2>&1; then
+	UNIT_PATH=$(systemctl show -p FragmentPath --value "${UNIT_NAME}" 2>/dev/null || true)
+fi
+if [ -z "${UNIT_PATH}" ] || [ ! -f "${UNIT_PATH}" ]; then
+	for cand in \
+		"/etc/systemd/system/${UNIT_NAME}" \
+		"/usr/lib/systemd/system/${UNIT_NAME}" \
+		"/lib/systemd/system/${UNIT_NAME}"; do
+		if [ -f "${cand}" ]; then
+			UNIT_PATH="${cand}"
+			break
+		fi
+	done
+fi
+
+# New app converts FINGER*→mouse and wants SDL_TOUCH_MOUSE_EVENTS=0.
+# Old app only handles MOUSE* and needs SDL synthesis on (=1).
+TOUCH_MOUSE_EVENTS=1
+if [ -f /opt/rk00pi/gui/app.py ] && grep -q '_finger_to_mouse' /opt/rk00pi/gui/app.py 2>/dev/null; then
+	TOUCH_MOUSE_EVENTS=0
+	ok "app has FINGER→mouse bridge — SDL_TOUCH_MOUSE_EVENTS=0"
+else
+	info "app without FINGER bridge — SDL_TOUCH_MOUSE_EVENTS=1 (SDL synthesizes mouse)"
+	warn "for ElecLab under kmsdrm, upgrade /opt/rk00pi/gui/app.py if taps still die"
+fi
+
+if [ -z "${UNIT_PATH}" ] || [ ! -f "${UNIT_PATH}" ]; then
+	warn "${UNIT_NAME} unit file not found — skip unit patch"
+else
+	info "unit: ${UNIT_PATH}"
+	# Prefer drop-in so package/image updates do not clobber us.
+	DROPIN_DIR="/etc/systemd/system/${UNIT_NAME}.d"
+	DROPIN="${DROPIN_DIR}/10-input-button.conf"
+	NEED_DROPIN=1
+	# Always rewrite drop-in so SDL env tracks app capability.
+	say "writing ${DROPIN}"
+	if [ "$DRY_RUN" -eq 1 ]; then
+		info "(dry-run) drop-in groups=…input, RuntimeDirectoryMode=0755, SDL_TOUCH_MOUSE_EVENTS=${TOUCH_MOUSE_EVENTS}"
+	else
+		mkdir -p "${DROPIN_DIR}"
+		cat > "${DROPIN}" <<EOF
+# Managed by patchbox-fix-input-button — USB-HID touch (ElecLab) + button socket.
+[Service]
+SupplementaryGroups=audio gpio video render input
+RuntimeDirectory=rk00pi
+RuntimeDirectoryMode=0755
+Environment=SDL_VIDEODRIVER=kmsdrm
+Environment=SDL_TOUCH_MOUSE_EVENTS=${TOUCH_MOUSE_EVENTS}
+Environment=SDL_MOUSE_TOUCH_EVENTS=0
+EOF
+		mark_changed
+		ok "drop-in installed (SDL_TOUCH_MOUSE_EVENTS=${TOUCH_MOUSE_EVENTS})"
+	fi
+fi
+
+# --- 2b. udev rules for USB-HID touch permissions -----------------------------
+say "Touch: udev rules"
+UDEV_RULE="/etc/udev/rules.d/99-patchbox-touch.rules"
+UDEV_SRC=""
+for cand in \
+	"/usr/local/share/patchbox/99-patchbox-touch.rules" \
+	"$(dirname "$0")/../share/99-patchbox-touch.rules"; do
+	[ -f "$cand" ] && UDEV_SRC="$cand" && break
+done
+# Embedded minimal rules if source not shipped next to this script.
+if [ ! -f "${UDEV_RULE}" ]; then
+	say "installing ${UDEV_RULE}"
+	if [ "$DRY_RUN" -eq 1 ]; then
+		info "(dry-run) write udev touch rules"
+	else
+		cat > "${UDEV_RULE}" <<'UDEV'
+# Patchbox USB-HID touch (ElecLab bar panels and similar)
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TABLET}=="1", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Touch*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Goodix*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*ILITEK*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*eGalax*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*HID Touch*", MODE="0660", GROUP="input", TAG+="uaccess"
+UDEV
+		if command -v udevadm >/dev/null 2>&1; then
+			udevadm control --reload-rules || true
+			udevadm trigger --subsystem-match=input || true
+		fi
+		mark_changed
+		ok "udev rules installed + triggered"
+	fi
+else
+	ok "udev rules already present"
+fi
+
+# --- 2c. quick hardware visibility --------------------------------------------
+say "Touch: hardware check (ElecLab = HDMI + USB HID)"
+if command -v lsusb >/dev/null 2>&1; then
+	info "lsusb:"
+	lsusb 2>/dev/null | sed 's/^/      /' || true
+fi
+if [ -r /proc/bus/input/devices ]; then
+	if grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts|HID Touch' \
+		/proc/bus/input/devices 2>/dev/null; then
+		ok "touch-like input device present in /proc/bus/input/devices"
+	else
+		warn "no touch-like Name= in /proc/bus/input/devices"
+		warn "ElecLab panels need the USB cable plugged into the Pi (HDMI alone = no touch)"
+		warn "After plugging USB: sudo udevadm trigger; sudo patchbox-touch-probe"
+	fi
+fi
+
+# --- 3. The Button bridge (client + scripts + pisound.conf) -------------------
+say "Button: bridge scripts and pisound.conf"
+
+install_bridge_from_tree() {
+	local src="$1"
+	[ -f "${src}/rk00pi-btn" ] || return 1
+	say "installing button client + scripts from ${src}"
+	run install -d "$(dirname "${BUTTON_CLIENT}")"
+	run install -m 755 "${src}/rk00pi-btn" "${BUTTON_CLIENT}"
+	run install -d "${PISOUND_SCRIPTS}"
+	# shellcheck disable=SC2086
+	run install -m 755 ${src}/rk00pi_*.sh "${PISOUND_SCRIPTS}/"
+	mark_changed
+	return 0
+}
+
+if [ ! -x "${BUTTON_CLIENT}" ]; then
+	if install_bridge_from_tree "${BRIDGE_SRC}"; then
+		ok "installed ${BUTTON_CLIENT}"
+	else
+		warn "${BUTTON_CLIENT} missing and no bridge at ${BRIDGE_SRC}"
+		warn "scp RK-00pi/deploy/pisound/* to the Pi, or re-flash a newer image"
+	fi
+else
+	ok "client ${BUTTON_CLIENT} present"
+fi
+
+# Ensure action scripts exist if client does (partial installs).
+if [ -x "${BUTTON_CLIENT}" ]; then
+	for s in rk00pi_click.sh rk00pi_hold.sh; do
+		if [ ! -x "${PISOUND_SCRIPTS}/${s}" ]; then
+			if [ -f "${BRIDGE_SRC}/${s}" ]; then
+				run install -d "${PISOUND_SCRIPTS}"
+				run install -m 755 "${BRIDGE_SRC}/${s}" "${PISOUND_SCRIPTS}/${s}"
+				# optional companions
+				for extra in rk00pi_down.sh rk00pi_up.sh; do
+					[ -f "${BRIDGE_SRC}/${extra}" ] && \
+						run install -m 755 "${BRIDGE_SRC}/${extra}" "${PISOUND_SCRIPTS}/${extra}" || true
+				done
+				mark_changed
+				ok "installed ${s}"
+			else
+				warn "missing ${PISOUND_SCRIPTS}/${s}"
+			fi
+		fi
+	done
+fi
+
+set_pisound_action() {
+	local action="$1" script="$2"
+	if [ ! -f "${PISOUND_CONF}" ]; then
+		run mkdir -p "$(dirname "${PISOUND_CONF}")"
+		if [ "$DRY_RUN" -eq 0 ]; then
+			: > "${PISOUND_CONF}"
+		fi
+	fi
+	if grep -qE "^${action}[[:space:]]" "${PISOUND_CONF}" 2>/dev/null; then
+		local cur
+		cur=$(awk -v a="${action}" '$1==a {print $2; exit}' "${PISOUND_CONF}" 2>/dev/null || true)
+		if [ "${cur}" = "${script}" ]; then
+			return 0
+		fi
+		if [ "$DRY_RUN" -eq 1 ]; then
+			info "(dry-run) ${action} ${script}  (was ${cur})"
+		else
+			sed -i "s|^${action}[[:space:]].*|${action} ${script}|" "${PISOUND_CONF}"
+			mark_changed
+		fi
+	else
+		if [ "$DRY_RUN" -eq 1 ]; then
+			info "(dry-run) append ${action} ${script}"
+		else
+			# First time we touch conf, keep a backup for restore.
+			if [ -s "${PISOUND_CONF}" ] && [ ! -f "${BUTTON_BACKUP}" ]; then
+				cp "${PISOUND_CONF}" "${BUTTON_BACKUP}"
+				info "backed up conf → ${BUTTON_BACKUP}"
+			fi
+			printf '%s %s\n' "${action}" "${script}" >> "${PISOUND_CONF}"
+			mark_changed
+		fi
+	fi
+}
+
+if [ -x "${PISOUND_SCRIPTS}/rk00pi_click.sh" ] && [ -x "${PISOUND_SCRIPTS}/rk00pi_hold.sh" ]; then
+	for action in CLICK_1 CLICK_2 CLICK_3 CLICK_OTHER; do
+		set_pisound_action "${action}" "${PISOUND_SCRIPTS}/rk00pi_click.sh"
+	done
+	for action in HOLD_1S HOLD_3S HOLD_5S HOLD_OTHER; do
+		set_pisound_action "${action}" "${PISOUND_SCRIPTS}/rk00pi_hold.sh"
+	done
+	ok "pisound.conf CLICK_*/HOLD_* → rk00pi_{click,hold}.sh"
+else
+	warn "skip conf map — action scripts not installed"
+fi
+
+# --- 4. enable daemons --------------------------------------------------------
+say "Services"
+if systemctl cat pisound-btn.service >/dev/null 2>&1; then
+	if [ "$(systemctl is-enabled pisound-btn.service 2>/dev/null || true)" != "enabled" ]; then
+		run systemctl enable pisound-btn.service
+		mark_changed
+		ok "enabled pisound-btn"
+	else
+		ok "pisound-btn already enabled"
+	fi
+else
+	warn "pisound-btn.service not installed (apt install pisound-btn?)"
+fi
+
+if systemctl cat "${UNIT_NAME}" >/dev/null 2>&1; then
+	if [ "$(systemctl is-enabled "${UNIT_NAME}" 2>/dev/null || true)" != "enabled" ]; then
+		run systemctl enable "${UNIT_NAME}"
+		mark_changed
+		ok "enabled ${UNIT_NAME}"
+	else
+		ok "${UNIT_NAME} already enabled"
+	fi
+else
+	warn "${UNIT_NAME} not installed"
+fi
+
+# --- 5. reload / restart ------------------------------------------------------
+if [ "$NO_RESTART" -eq 1 ]; then
+	say "Skipping restart (--no-restart)"
+	if [ "$CHANGED" -eq 1 ]; then
+		warn "changes applied but not active until: systemctl daemon-reload && systemctl restart ${UNIT_NAME} pisound-btn"
+	fi
+else
+	say "daemon-reload + restart"
+	run systemctl daemon-reload
+	if systemctl cat pisound-btn.service >/dev/null 2>&1; then
+		run systemctl restart pisound-btn.service || warn "pisound-btn restart failed"
+	fi
+	if systemctl cat "${UNIT_NAME}" >/dev/null 2>&1; then
+		run systemctl restart "${UNIT_NAME}" || warn "${UNIT_NAME} restart failed"
+		# Give notify/socket a moment to appear.
+		if [ "$DRY_RUN" -eq 0 ]; then
+			sleep 2
+		fi
+	fi
+fi
+
+# --- 6. report ----------------------------------------------------------------
+say "Status"
+echo
+printf '  user groups:    %s\n' "$(id -nG "${APP_USER}" 2>/dev/null || echo '?')"
+if systemctl cat "${UNIT_NAME}" >/dev/null 2>&1; then
+	printf '  unit groups:    %s\n' "$(systemctl show -p SupplementaryGroups --value "${UNIT_NAME}" 2>/dev/null || echo '?')"
+	printf '  unit active:    %s\n' "$(systemctl is-active "${UNIT_NAME}" 2>/dev/null || echo '?')"
+fi
+if systemctl cat pisound-btn.service >/dev/null 2>&1; then
+	printf '  pisound-btn:    %s / %s\n' \
+		"$(systemctl is-enabled pisound-btn 2>/dev/null || echo '?')" \
+		"$(systemctl is-active pisound-btn 2>/dev/null || echo '?')"
+fi
+if [ -S /run/rk00pi/button.sock ]; then
+	printf '  button socket:  /run/rk00pi/button.sock (live)\n'
+else
+	printf '  button socket:  ABSENT\n'
+fi
+if [ -d /sys/kernel/pisound ]; then
+	printf '  pisound sysfs:  present\n'
+else
+	printf '  pisound sysfs:  ABSENT (HAT/driver?)\n'
+fi
+if [ -f "${PISOUND_CONF}" ]; then
+	echo "  pisound.conf:"
+	grep -E '^(CLICK_|HOLD_)' "${PISOUND_CONF}" 2>/dev/null | sed 's/^/    /' || \
+		echo "    (no CLICK_*/HOLD_* lines)"
+fi
+
+if [ "$DRY_RUN" -eq 0 ] && [ -x "${BUTTON_CLIENT}" ]; then
+	echo
+	if [ -S /run/rk00pi/button.sock ]; then
+		echo -n "  rk00pi-btn PING: "
+		if out=$("${BUTTON_CLIENT}" PING 2>&1); then
+			ok "${out}"
+		else
+			bad "${out}"
+		fi
+	else
+		bad "cannot PING — socket missing (is ${UNIT_NAME} up?)"
+	fi
+fi
+
+echo
+if id -nG "${APP_USER}" 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+	ok "touch: ${APP_USER} ∈ input — tap the panel after restart"
+else
+	bad "touch: still not in input"
+fi
+
+if [ "$DRY_RUN" -eq 1 ]; then
+	say "Dry-run only — re-run without --dry-run to apply"
+elif [ "$CHANGED" -eq 1 ]; then
+	say "Done — touch the screen; one-click The Button should play/stop"
+else
+	say "Nothing to change — already converged"
+fi
+
+echo
+echo "More: patchbox-rk00pi-status · patchbox-display-status"
+echo "      sudo patchbox-touch-probe     # live: tap panel, watch events"
+echo "      journalctl -u rk00pi -u pisound-btn -b -n 40"
+echo "      rk00pi-btn ACTION play_stop   # software press"
+echo
+echo "ElecLab note: HDMI = video, USB = touch. Both must be connected."
+echo "If probe sees events but UI ignores taps, update /opt/rk00pi (FINGER→mouse)."
+exit 0

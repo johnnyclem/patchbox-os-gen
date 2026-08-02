@@ -102,13 +102,21 @@ if [ -f "${LIGHTDM}" ]; then
 	fi
 fi
 
-# Touch: USB HID usually works out of the box with libinput
+# Touch: USB HID (ElecLab 1280×400 bar and similar).
+# - X11/libinput path only when LightDM is used
+# - kmsdrm (rk00pi) needs group `input` + udev on /dev/input/event*
+# - app maps SDL FINGER* → mouse (see RK-00pi gui/app.py)
 install -d "${ROOTFS_DIR}/etc/X11/xorg.conf.d"
 install -m 644 files/40-libinput-touch.conf \
 	"${ROOTFS_DIR}/etc/X11/xorg.conf.d/40-libinput-touch.conf"
+install -d "${ROOTFS_DIR}/etc/udev/rules.d"
+install -m 644 files/99-patchbox-touch.rules \
+	"${ROOTFS_DIR}/etc/udev/rules.d/99-patchbox-touch.rules"
 
 install -m 755 files/patchbox-display-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-display-status"
+install -m 755 files/patchbox-touch-probe \
+	"${ROOTFS_DIR}/usr/local/bin/patchbox-touch-probe"
 
 # Compact LXDE panel height for a short 400px-tall bar
 if [ -f "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/.config/lxpanel/LXDE-pi/panels/panel" ]; then
@@ -139,9 +147,18 @@ Display
   If picture is wrong: try removing hdmi_ignore_edid= line, or switch HDMI port
   (Pi 5 has two HDMI — plug into HDMI-A-1 nearest USB-C, or edit to HDMI-A-2).
 
-Touch
-  USB HID touch → libinput (usually plug-and-play).
-  Calibrate / map: Screen Configuration, or xinput list
+Touch (ElecLab / USB-HID bar panels)
+  Hardware needs BOTH cables: HDMI (video) + USB-A (touch controller).
+  ElecLab 7.4" 1280×400 uses an onboard Cortex-M4 HID — no vendor driver.
+  SDL kmsdrm path (rk00pi): group 'input' + SupplementaryGroups=… input,
+  plus the app converts FINGER*→mouse. X11 libinput conf only applies if
+  you stop rk00pi and run LightDM.
+  Checks:
+    patchbox-display-status
+    patchbox-touch-probe          # live: tap panel, see events
+    lsusb ; cat /proc/bus/input/devices
+    ls -l /dev/input/event* ; id rk00pi
+  Field repair: sudo patchbox-fix-input-button
 
 Audio / MIDI
   Pisound is the pro I/O device (not onboard HDMI audio for performance work).

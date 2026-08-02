@@ -1,5 +1,5 @@
 #!/bin/bash
-# Display + Pisound quick diagnostics for the ultrawide HDMI stack.
+# Display + Pisound + ElecLab/USB-HID touch diagnostics for the ultrawide HDMI stack.
 set -euo pipefail
 
 echo "=== HDMI / ultrawide config ==="
@@ -24,8 +24,72 @@ if [ -d /sys/class/drm ]; then
 	done
 fi
 echo
-echo "=== touch / input ==="
-cat /proc/bus/input/devices 2>/dev/null | grep -E 'Name=|Handlers=' | head -50 || true
+echo "=== USB (ElecLab touch is a separate USB HID device) ==="
+if command -v lsusb >/dev/null 2>&1; then
+	lsusb | sed 's/^/  /' || true
+	if ! lsusb 2>/dev/null | grep -qiE 'touch|goodix|ilitek|egalax|wave|hid'; then
+		echo "  note: no obvious touch/HID name in lsusb (many ElecLab chips show as generic HID)"
+	fi
+else
+	echo "  (lsusb missing)"
+fi
+echo
+echo "=== touch / input devices ==="
+if [ -r /proc/bus/input/devices ]; then
+	awk '
+		/^N: Name=/ { n=$0; sub(/^N: Name=/,"",n); gsub(/"/,"",n) }
+		/^H: Handlers=/ {
+			h=$0; sub(/^H: Handlers=/,"",h)
+			print "  " n "  [" h "]"
+		}
+	' /proc/bus/input/devices
+	if ! grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts' \
+		/proc/bus/input/devices 2>/dev/null; then
+		echo "  WARNING: no touch-like Name= found."
+		echo "  ElecLab 1280×400 needs HDMI + USB. HDMI alone = picture, zero touch."
+		echo "  Plug the panel USB into a Pi USB-A port, then re-run this."
+	fi
+else
+	echo "  (cannot read /proc/bus/input/devices)"
+fi
+echo
+echo "=== /dev/input permissions (kmsdrm needs group 'input') ==="
+ls -la /dev/input/event* 2>/dev/null | head -20 || echo "(no event devices)"
+if id rk00pi >/dev/null 2>&1; then
+	if id -nG rk00pi 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+		echo "rk00pi ∈ input: yes"
+	else
+		echo "rk00pi ∈ input: NO — UI paints but taps die under SDL kmsdrm"
+		echo "  fix: sudo patchbox-fix-input-button"
+	fi
+	if systemctl cat rk00pi.service >/dev/null 2>&1; then
+		sg=$(systemctl show -p SupplementaryGroups --value rk00pi.service 2>/dev/null || true)
+		echo "rk00pi.service SupplementaryGroups: ${sg:-?}"
+		if ! printf '%s\n' "$sg" | tr ' ' '\n' | grep -qx input; then
+			echo "  WARNING: unit missing 'input' — sudo patchbox-fix-input-button"
+		fi
+		# SDL env (FINGER→mouse path)
+		env_all=$(systemctl show -p Environment --value rk00pi.service 2>/dev/null || true)
+		echo "rk00pi.service Environment: ${env_all:-?}"
+		case " ${env_all} " in
+			*"SDL_VIDEODRIVER=kmsdrm"*) ;;
+			*) echo "  note: SDL_VIDEODRIVER not kmsdrm (or unset in unit show)" ;;
+		esac
+	fi
+fi
+if [ -f /etc/udev/rules.d/99-patchbox-touch.rules ]; then
+	echo "udev: /etc/udev/rules.d/99-patchbox-touch.rules present"
+else
+	echo "udev: 99-patchbox-touch.rules missing (optional; stock input group usually enough)"
+fi
+if command -v libinput >/dev/null 2>&1; then
+	echo
+	echo "=== libinput list-devices (touchscreens) ==="
+	libinput list-devices 2>/dev/null | awk '
+		/^Device:|^Kernel:|^Capabilities:|^Seat:/ {print}
+		/^$/ {if (seen++) print ""}
+	' | head -80 || true
+fi
 echo
 echo "=== audio (expect Pisound) ==="
 aplay -l 2>/dev/null || true
@@ -35,4 +99,6 @@ echo
 echo "=== JACK ==="
 jack_lsp 2>/dev/null | head -30 || echo "(JACK not running)"
 echo
+echo "Live tap test:  sudo patchbox-touch-probe"
+echo "Field repair:   sudo patchbox-fix-input-button"
 echo "See ~/DISPLAY-PISOUND.txt"

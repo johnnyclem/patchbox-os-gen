@@ -59,10 +59,15 @@ if [ -x /usr/local/bin/rk00pi-btn ]; then
 else
 	echo "client:  rk00pi-btn MISSING (re-run stage or deploy/install.sh)"
 fi
+if systemctl cat pisound-btn.service >/dev/null 2>&1; then
+	echo "daemon:  pisound-btn $(systemctl is-enabled pisound-btn 2>/dev/null || echo '?') / $(systemctl is-active pisound-btn 2>/dev/null || echo '?')"
+else
+	echo "daemon:  pisound-btn.service MISSING (install pisound-btn package)"
+fi
 if [ -f /etc/pisound.conf ]; then
 	echo "pisound.conf click/hold map:"
 	grep -E '^(CLICK_|HOLD_)' /etc/pisound.conf 2>/dev/null | sed 's/^/  /' || \
-		echo "  (no CLICK_*/HOLD_* lines)"
+		echo "  (no CLICK_*/HOLD_* lines — button scripts not wired)"
 else
 	echo "pisound.conf: missing"
 fi
@@ -76,6 +81,30 @@ if [ -S /run/rk00pi/button.sock ]; then
 	fi
 else
 	echo "socket:  /run/rk00pi/button.sock absent (is rk00pi running?)"
+fi
+if [ -r /sys/kernel/pisound/version ] || [ -d /sys/kernel/pisound ]; then
+	echo "kernel:  /sys/kernel/pisound present"
+	[ -r /sys/kernel/pisound/version ] && echo "  version: $(cat /sys/kernel/pisound/version 2>/dev/null)"
+else
+	echo "kernel:  /sys/kernel/pisound ABSENT — HAT/driver not loaded (button GPIO dead)"
+fi
+echo
+
+echo "=== Touch / input groups (kmsdrm) ==="
+if id rk00pi >/dev/null 2>&1; then
+	echo "rk00pi groups: $(id -nG rk00pi 2>/dev/null || true)"
+	if id -nG rk00pi 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+		echo "input group: ok (service user can read /dev/input/event*)"
+	else
+		echo "input group: MISSING on rk00pi — touch will not work under kmsdrm"
+		echo "  fix: sudo usermod -aG input rk00pi && sudo systemctl restart rk00pi"
+	fi
+else
+	echo "rk00pi user: missing"
+fi
+# What the running unit actually has (SupplementaryGroups= overrides login groups)
+if systemctl show -p SupplementaryGroups rk00pi.service >/dev/null 2>&1; then
+	echo "unit SupplementaryGroups: $(systemctl show -p SupplementaryGroups --value rk00pi.service 2>/dev/null || echo '?')"
 fi
 echo
 

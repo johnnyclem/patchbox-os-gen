@@ -15,9 +15,9 @@ Raspberry Pi 5
   │     • MIDI DIN in/out
   │     • The Button → RK-00pi gestures (play/stop, record, save, panic)
   │     • Patchbox / JACK path available
-  ├── HDMI bar / ultrawide monitor 1280×400
+  ├── HDMI bar / ultrawide monitor 1280×400 (ElecLab reference)
   │     • Video: HDMI
-  │     • Touch: USB HID
+  │     • Touch: USB HID (separate USB-A cable — HDMI alone has no touch)
   └── RK-00pi (main appliance UI)
         • SDL KMS/DRM kiosk (no X required)
         • 1280×400 light-industrial touch UI (side transport + tab rails)
@@ -122,7 +122,29 @@ video=HDMI-A-1:1280x400@60D …
 
 If the monitor is on the **other** Pi 5 HDMI port, change to `HDMI-A-2` or swap the cable to the port nearest USB-C.
 
-USB touch is normally plug-and-play via libinput.
+### Touch — ElecLab USB-HID (common failure modes)
+
+Reference panel: **ElecLab 7.4″ 1280×400** (HDMI + capacitive USB). Onboard
+Cortex-M4 HID — no vendor kernel driver, no `goodtft` script.
+
+| Need | Why |
+|------|-----|
+| **HDMI + USB both plugged** | HDMI = video only. USB carries touch. |
+| `rk00pi` ∈ group **`input`** | SDL kmsdrm opens `/dev/input/event*` |
+| unit `SupplementaryGroups=… input` | same, for the service process |
+| app **FINGER→mouse** bridge | many HID panels emit SDL `FINGER*` only; widgets listen for `MOUSE*` |
+| `SDL_TOUCH_MOUSE_EVENTS=0` | with the bridge, avoid double-fire |
+
+X11 libinput conf does **not** apply to the kiosk path. Missing `input` or
+missing USB → UI looks perfect, taps do nothing.
+
+Live checks:
+
+```bash
+patchbox-display-status
+sudo patchbox-touch-probe          # tap the glass; expect ABS/BTN lines
+sudo patchbox-fix-input-button    # groups + unit drop-in + udev
+```
 
 ---
 
@@ -201,9 +223,58 @@ Optional desktop: `sudo systemctl stop rk00pi && sudo systemctl start lightdm`
 
 ---
 
+## Known field issues (2026-08-01)
+
+| Symptom | Likely cause | Fix |
+|---------|--------------|-----|
+| UI looks great, **touch dead** | missing `input` group / unit groups / no USB | **`sudo patchbox-fix-input-button`** then **`sudo patchbox-touch-probe`** |
+| probe sees **no** events | USB unplugged, bad port, or dead controller | Plug ElecLab USB; try USB2 port; `lsusb` + `/proc/bus/input/devices` |
+| probe sees events, UI still dead | old app (no FINGER→mouse) or wrong SDL env | scp updated `gui/app.py` + re-run fix script; or re-flash |
+| **The Button** does nothing | `pisound-btn` inactive, conf not mapped, or no socket | same one-shot; then `rk00pi-btn PING` |
+| Button LEDs flash long, no transport | Socket missing (rk00pi down) | `systemctl status rk00pi`; journal for “button listening” |
+| No `/sys/kernel/pisound` | HAT/driver not loaded | Reseat HAT; `lsmod \| grep pisound`; Pisound package/overlay |
+
+### One-shot repair (live Pi, no re-flash)
+
+Script path on image: `/usr/local/sbin/patchbox-fix-input-button`  
+Source (scp to an already-flashed card):
+
+```bash
+# from patchbox-os-gen checkout
+scp stage3/10-install-rk00pi/files/patchbox-fix-input-button \
+  patch@patchbox.local:/tmp/
+ssh patch@patchbox.local 'sudo bash /tmp/patchbox-fix-input-button'
+# preview only:
+ssh patch@patchbox.local 'sudo bash /tmp/patchbox-fix-input-button --dry-run'
+```
+
+What it does: `usermod -aG input rk00pi`, systemd drop-in for
+`SupplementaryGroups=… input` + `RuntimeDirectoryMode=0755` +
+`SDL_TOUCH_MOUSE_EVENTS` (0 if app has FINGER bridge, else 1), installs
+`99-patchbox-touch.rules`, maps `/etc/pisound.conf` →
+`rk00pi_{click,hold}.sh`, enables `pisound-btn`, restarts both units,
+prints `rk00pi-btn PING`.
+
+### Field-update touch path without full re-flash
+
+```bash
+# from patchbox-os-gen checkout
+scp RK-00pi/gui/app.py patch@patchbox.local:/tmp/app.py
+scp stage3/10-install-rk00pi/files/patchbox-fix-input-button \
+    stage3/09-hdmi-ultrawide/files/patchbox-touch-probe \
+    stage3/09-hdmi-ultrawide/files/patchbox-display-status \
+    patch@patchbox.local:/tmp/
+ssh patch@patchbox.local 'sudo install -m 644 /tmp/app.py /opt/rk00pi/gui/app.py \
+  && sudo install -m 755 /tmp/patchbox-fix-input-button /usr/local/sbin/ \
+  && sudo install -m 755 /tmp/patchbox-touch-probe /usr/local/bin/ \
+  && sudo install -m 755 /tmp/patchbox-display-status /usr/local/bin/ \
+  && sudo patchbox-fix-input-button \
+  && sudo patchbox-touch-probe'
+```
+
 ## Next session ideas
 
-1. Flash image and soak first-boot to RK-00pi UI on real 1280×400 panel  
+1. On-device ElecLab soak: `patchbox-touch-probe` then Launch-grid taps  
 2. Verify Pisound DIN MIDI + prefer_pisound path in journal  
 3. On-device pass for The Button (CI has no pisound-btn hardware)  
 4. Gate driver still `null` until buffered stage is signed off  

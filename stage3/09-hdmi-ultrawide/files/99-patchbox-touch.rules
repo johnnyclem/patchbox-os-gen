@@ -1,0 +1,17 @@
+# Patchbox: USB-HID touch (ElecLab 1280×400 bar and similar HDMI panels).
+# SDL kmsdrm reads /dev/input/event* as the service user — group `input` and
+# mode 0660 are required. Stock udev usually does this; these rules force it
+# when a device only partially tags itself (common on generic HID controllers).
+
+# Explicit touchscreen / tablet
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TABLET}=="1", MODE="0660", GROUP="input", TAG+="uaccess"
+
+# Name-based catchalls for common HID touch controllers
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Touch*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Goodix*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*ILITEK*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*eGalax*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*WaveShare*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*ElecLab*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*HID Touch*", MODE="0660", GROUP="input", TAG+="uaccess"
