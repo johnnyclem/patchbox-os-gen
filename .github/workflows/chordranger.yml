@@ -1,0 +1,115 @@
+# ChordRanger tests.
+#
+# The image build itself is far too heavy for CI (qemu, a full rootfs, pip
+# under emulation), so this covers the part that is worth covering on every
+# push: the app that ships inside it.
+#
+# Everything here runs headless. The engine core is stdlib-only by design and
+# the GUI runs under SDL's dummy video driver, so there is no display, no
+# audio device and no MIDI port anywhere in this job.
+name: chordranger
+
+on:
+  push:
+    paths:
+      - 'apps/chordranger/**'
+      - '.github/workflows/chordranger.yml'
+  pull_request:
+    paths:
+      - 'apps/chordranger/**'
+      - '.github/workflows/chordranger.yml'
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: apps/chordranger
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is what Bookworm ships and therefore what the appliance runs;
+        # 3.12 is the canary for the next Raspberry Pi OS base.
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # pygame only. mido/python-rtmidi are deliberately absent: their
+          # absence is a supported state (the app degrades to a silent null
+          # backend rather than refusing to boot), and CI is where that path
+          # gets exercised for free.
+          pip install pygame pytest pyflakes
+
+      - name: The engine core must not need a display
+        run: |
+          # The rule that makes everything else here possible: nothing in
+          # core/ may import pygame or open a device at import time. It is
+          # easy to break by accident and invisible until CI has no display.
+          python - <<'PY'
+          import importlib, sys
+          sys.path.insert(0, '.')
+          sys.modules['pygame'] = None          # poison it
+          for module in ('core.theory', 'core.chords', 'core.chordset',
+                         'core.cruiser', 'core.style', 'core.bass',
+                         'core.arranger', 'core.song', 'core.engine',
+                         'core.midi_io', 'core.project', 'core.config',
+                         'core.button', 'core.commands', 'core.clock',
+                         'core.events', 'data.styles'):
+              importlib.import_module(module)
+          print('core imports cleanly with pygame unavailable')
+          PY
+
+      - name: Lint
+        run: python -m pyflakes .
+
+      - name: Tests
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python -m pytest -q
+
+      - name: Render the panel
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          # Not an assertion about pixels — it proves every screen still
+          # draws end to end against a real engine, and leaves images a
+          # reviewer can look at without the hardware on the desk.
+          python bench/render_panel.py /tmp/panel
+
+      - name: Upload panel screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-${{ matrix.python-version }}
+          path: /tmp/panel/*.png
+          if-no-files-found: warn
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse the shipped scripts
+        run: |
+          # The install stage and the button wrappers run on a device nobody
+          # is watching, so a syntax error in them is a brick. Parse-only:
+          # they cannot be executed off a Pi.
+          bash -n stage3/11-install-chordranger/01-run.sh
+          bash -n stage3/11-install-chordranger/files/patchbox-chordranger
+          sh -n apps/chordranger/deploy/pisound/chordranger_click.sh
+          sh -n apps/chordranger/deploy/pisound/chordranger_hold.sh
+          python3 -m py_compile apps/chordranger/deploy/pisound/chordranger-btn
+          echo "all shipped scripts parse"
