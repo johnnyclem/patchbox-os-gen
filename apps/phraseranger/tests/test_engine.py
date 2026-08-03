@@ -314,3 +314,27 @@ def test_snapshot_reports_the_loops():
     assert len(snapshot.slice_captions) == 16
     assert snapshot.slice_filled[0]
     stop_clean(engine, midi)
+
+
+# --- the internal endpoint (Phase 4) -------------------------------------------
+
+def test_internal_track_drives_the_synth_and_releases():
+    from rangerkit.audio.bridge import SynthMidiBridge
+    from rangerkit.audio.render import render_blocks, rms
+    from rangerkit.audio.synth import SimpleSynth
+
+    synth = SimpleSynth("soft")
+    midi = SynthMidiBridge(CaptureMidiIO(), synth)
+    engine = PhraseRangerEngine(default_project(), midi, FakeClock())
+    engine.submit(base.Play())
+    engine.step()
+    engine.submit(cmd.SetTrackField(index=0, name="dest",
+                                    value="internal"))
+    engine.step()
+    record_note(engine, 60, hold=TICKS_PER_BAR // 2)    # a long take
+    run_ticks(engine, TICKS_PER_BAR - 100)  # into the replay, note held
+    assert rms(render_blocks(synth, 8)) > 0.001
+    engine.submit(base.Stop())
+    engine.step()
+    assert not synth.hanging_voices()       # the book released the synth
+    assert not midi.hanging()

@@ -74,3 +74,12 @@ channel = -1
 # What each pot turns: cruise_speed, chaos, density, complexity, nothing.
 POT_A = "cruise_speed"
 POT_B = "chaos"
+
+[audio]
+# The internal endpoint's device layer. "auto" opens PortAudio against the
+# default device (the Pisound) and degrades to silent "null" when there is
+# no stack — the SET screen says which. Internal render is 48 kHz float32;
+# the DAC path may clock higher, the synthesis does not.
+backend = "auto"
+sample_rate = 48000
+block_frames = 256

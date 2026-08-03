@@ -81,6 +81,19 @@ def build_rig(project_path: Path | None, config):
         lambda endpoint, status, data, ts: engine_ref[0].on_realtime_in(
             endpoint, status, data, ts),
         backend=config.midi.backend)
+    # The internal audio path (slice preview, or any track pointed at
+    # "internal"): a small synth answers on the DAC through the bridge, and
+    # the release book releases its voices like any note. No audio stack →
+    # null out, silent internal, everything else unchanged.
+    from rangerkit.audio.bridge import SynthMidiBridge
+    from rangerkit.audio.engine import open_audio
+    from rangerkit.audio.synth import SimpleSynth
+    synth = SimpleSynth("soft")
+    midi = SynthMidiBridge(midi, synth)
+    audio = open_audio(synth, config=config)
+    midi._audio_out = audio             # shutdown_rig stops the stream
+    log.info("audio: %s", audio.backend_name)
+
     engine = PhraseRangerEngine(project, midi, RealClock(), config=config)
     engine_ref.append(engine)
 
@@ -142,6 +155,9 @@ def shutdown_rig(engine, midi, button=None, pots=None) -> None:
         pots.stop()
     engine.shutdown()
     midi.close_all()
+    audio = getattr(midi, "_audio_out", None)
+    if audio is not None:
+        audio.stop()
 
 
 def run_headless(project_path: Path | None, config) -> int:
