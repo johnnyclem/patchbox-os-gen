@@ -1,0 +1,59 @@
+# @APP_TITLE@ kiosk appliance unit — rendered from rangerkit's template by
+# install-ranger-app.sh (@APP@, @APP_TITLE@, @DESCRIPTION@ and
+# @KIOSK_CONFLICTS@ filled at install time).
+#
+# Not enabled alongside the sibling kiosk units by default — they all want
+# SDL_VIDEODRIVER=kmsdrm and there is one panel, so whichever starts second
+# gets a black screen. Pick one with `patchbox-app enable <app>`.
+[Unit]
+Description=@APP_TITLE@ — @DESCRIPTION@
+After=sound.target
+Wants=sound.target
+# Declared so systemd refuses the combination outright rather than letting
+# two apps fight over the display and leaving the operator to work out why
+# the panel is dark. Conflicts= is bidirectional, so listing every sibling
+# here covers the older units without editing them.
+Conflicts=@KIOSK_CONFLICTS@
+
+[Service]
+Type=simple
+User=@APP@
+WorkingDirectory=/opt/@APP@
+ExecStart=/opt/@APP@/venv/bin/python main.py --fullscreen --config /etc/@APP@/config.toml
+# always, not on-failure: this is an appliance. A clean exit (ESC, window
+# close) should still bring the instrument back rather than leave a dark
+# panel on stage.
+Restart=always
+RestartSec=2
+
+# Device access the rig needs, declared here rather than only in the install
+# docs — audio/seq for ALSA MIDI, video/render for the KMS panel.
+#
+# input is what makes the touchscreen work: /dev/input/event* is root:input
+# 0660, and under kmsdrm SDL reads those nodes directly — there is no X or
+# Wayland in between to do it for us. Without the group the panel still draws
+# perfectly and every tap goes nowhere, which is a maddening fault to chase.
+SupplementaryGroups=audio input video render
+
+# /run/@APP@ for the button (and pots) sockets. systemd creates it owned by
+# User= before ExecStart and removes it on stop, so a crash cannot leave a
+# stale socket node behind to block the next bind.
+RuntimeDirectory=@APP@
+RuntimeDirectoryMode=0755
+
+# KMS/DRM kiosk: SDL renders straight to the panel, no X or Wayland.
+Environment=SDL_VIDEODRIVER=kmsdrm
+# The app maps touch events itself; SDL's duplicate synthesis would double
+# every tap.
+Environment=SDL_TOUCH_MOUSE_EVENTS=0
+Environment=SDL_MOUSE_TOUCH_EVENTS=0
+# Lab alternative under a desktop session: Environment=SDL_VIDEODRIVER=x11
+
+# RT scheduling for the engine tick thread (it requests SCHED_FIFO at
+# [engine] rt_priority; these grants make that request succeed).
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=40
+LimitRTPRIO=61
+
+[Install]
+WantedBy=multi-user.target

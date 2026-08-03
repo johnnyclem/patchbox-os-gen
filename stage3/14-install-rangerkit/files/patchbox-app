@@ -1,0 +1,206 @@
+#!/bin/bash
+# patchbox-app — status, and swap which kiosk app owns the panel.
+#
+# Every Ranger app and RK-00pi render through SDL kmsdrm, and there is one
+# display. Enabling any app here stands every sibling down, so the machine
+# can never end up with two units enabled and a dark panel because they
+# raced for the DRM master.
+#
+# Successor to patchbox-chordranger (which still works for its two apps):
+# this one knows the whole kiosk family, from the same list the install
+# stages render each unit's Conflicts= line from.
+set -euo pipefail
+
+PISOUND_CONF=/etc/pisound.conf
+SCRIPTS=/usr/local/pisound/scripts/pisound-btn
+# The pre-Ranger button map, saved once on the first takeover and restored by
+# `disable`. One slot for the whole family: app→app switches never touch it.
+BASE_BAK="${PISOUND_CONF}.ranger-base.bak"
+DEFAULT_APP=rk00pi
+
+# The kiosk family. Kept in step with apps/rangerkit/deploy/kiosk-units.txt
+# (vendored copies live under /opt/<app>/rangerkit, which may not include
+# deploy/, so the list is inlined here at install time by the stage if it
+# ever needs to differ — today they match).
+KIOSK_APPS="rk00pi chordranger midiranger genranger phraseranger sceneranger grooveranger synthranger"
+
+usage() {
+	cat <<'EOF'
+usage: patchbox-app [status|enable <app>|disable|button <app>|logs <app>]
+
+  status         every installed kiosk app and which one owns the panel
+  enable <app>   make <app> the app that boots, and start it now      [root]
+  disable        stop the current app, restore the default app        [root]
+  button <app>   map the PiSound button to <app>                      [root]
+  logs <app>     tail that app's service journal
+
+Kiosk apps: rk00pi chordranger midiranger genranger phraseranger
+            sceneranger grooveranger synthranger
+EOF
+}
+
+need_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		echo "this needs root: sudo patchbox-app $*" >&2
+		exit 1
+	fi
+}
+
+installed() { # $1 app
+	systemctl cat "$1.service" >/dev/null 2>&1
+}
+
+known() { # $1 app
+	local app
+	for app in ${KIOSK_APPS}; do
+		[ "${app}" = "$1" ] && return 0
+	done
+	return 1
+}
+
+require_known_installed() { # $1 app
+	if [ -z "${1:-}" ]; then
+		usage
+		exit 2
+	fi
+	if ! known "$1"; then
+		echo "unknown kiosk app '$1' (see: patchbox-app -h)" >&2
+		exit 2
+	fi
+	if ! installed "$1"; then
+		echo "$1 is not installed on this image" >&2
+		exit 1
+	fi
+}
+
+unit_state() { # $1 unit
+	printf '%s / %s' \
+		"$(systemctl is-enabled "$1" 2>/dev/null || echo unknown)" \
+		"$(systemctl is-active "$1" 2>/dev/null || echo unknown)"
+}
+
+set_pisound_action() { # $1 action id, $2 script
+	if grep -qE "^$1[[:space:]]" "${PISOUND_CONF}" 2>/dev/null; then
+		sed -i "s|^$1[[:space:]].*|$1 $2|" "${PISOUND_CONF}"
+	else
+		printf '%s %s\n' "$1" "$2" >> "${PISOUND_CONF}"
+	fi
+}
+
+button_owner() {
+	local app
+	for app in ${KIOSK_APPS}; do
+		if grep -q "${app}_click.sh" "${PISOUND_CONF}" 2>/dev/null; then
+			echo "${app}"
+			return
+		fi
+	done
+	echo "pisound defaults"
+}
+
+cmd_status() {
+	echo "=== Patchbox kiosk apps ==="
+	echo "date: $(date -Is 2>/dev/null || date)"
+	echo
+	local app active_count=0 active_list=""
+	printf '%-14s %-22s %s\n' "app" "enabled / active" "install"
+	for app in ${KIOSK_APPS}; do
+		if installed "${app}"; then
+			printf '%-14s %-22s %s\n' "${app}" "$(unit_state "${app}.service")" \
+				"$([ -d "/opt/${app}" ] && echo "/opt/${app}" || echo "(unit only)")"
+			if systemctl is-active --quiet "${app}.service"; then
+				active_count=$((active_count + 1))
+				active_list="${active_list} ${app}"
+			fi
+		fi
+	done
+	echo
+	case "${active_count}" in
+		0) echo "panel: no kiosk app is running" ;;
+		1) echo "panel: owned by${active_list}" ;;
+		*) echo "WARNING: ${active_count} apps running (${active_list# }) — one has a dark panel."
+		   echo "         sudo patchbox-app enable <app>" ;;
+	esac
+	echo
+	echo "button map: /etc/pisound.conf -> $(button_owner)"
+	[ -f "${BASE_BAK}" ] && echo "base map:   saved at ${BASE_BAK}"
+}
+
+cmd_button() { # $1 app
+	need_root button
+	local app="$1"
+	require_known_installed "${app}"
+	if [ ! -e "${SCRIPTS}/${app}_click.sh" ] && [ "${app}" != rk00pi ]; then
+		echo "warning: ${SCRIPTS}/${app}_click.sh missing — mapping anyway"
+	fi
+	[ -f "${PISOUND_CONF}" ] || : > "${PISOUND_CONF}"
+	# Keep the first pre-Ranger map so `disable` can put it back. One slot,
+	# saved once: app→app switches never overwrite it.
+	[ -f "${BASE_BAK}" ] || cp "${PISOUND_CONF}" "${BASE_BAK}"
+	local action
+	for action in CLICK_1 CLICK_2 CLICK_3 CLICK_OTHER; do
+		set_pisound_action "${action}" "${SCRIPTS}/${app}_click.sh"
+	done
+	for action in HOLD_1S HOLD_3S HOLD_5S HOLD_OTHER; do
+		set_pisound_action "${action}" "${SCRIPTS}/${app}_hold.sh"
+	done
+	systemctl restart pisound-btn.service 2>/dev/null || true
+	echo "button mapped to ${app} (live map: /etc/${app}/config.toml [button.map])"
+}
+
+stand_down_all_but() { # $1 app to keep (may be "")
+	local app
+	for app in ${KIOSK_APPS}; do
+		[ "${app}" = "${1}" ] && continue
+		if installed "${app}"; then
+			systemctl stop "${app}.service" 2>/dev/null || true
+			systemctl disable "${app}.service" 2>/dev/null || true
+		fi
+	done
+}
+
+cmd_enable() { # $1 app
+	need_root enable "${1:-}"
+	local app="${1:-}"
+	require_known_installed "${app}"
+	stand_down_all_but "${app}"
+	systemctl enable "${app}.service"
+	cmd_button "${app}"
+	systemctl restart "${app}.service"
+	echo
+	echo "${app} owns the panel. Every sibling kiosk unit is stopped and disabled."
+	echo "Undo with: sudo patchbox-app disable"
+}
+
+cmd_disable() {
+	need_root disable
+	stand_down_all_but ""
+	if [ -f "${BASE_BAK}" ]; then
+		cp "${BASE_BAK}" "${PISOUND_CONF}"
+		systemctl restart pisound-btn.service 2>/dev/null || true
+		echo "button map restored from ${BASE_BAK}"
+	fi
+	if installed "${DEFAULT_APP}"; then
+		systemctl enable "${DEFAULT_APP}.service"
+		systemctl start "${DEFAULT_APP}.service"
+		echo "${DEFAULT_APP} owns the panel again."
+	else
+		echo "All kiosk apps disabled. ${DEFAULT_APP} is not installed on this image."
+	fi
+}
+
+case "${1:-status}" in
+	status) cmd_status ;;
+	enable) cmd_enable "${2:-}" ;;
+	disable) cmd_disable ;;
+	button)
+		[ -n "${2:-}" ] || { usage; exit 2; }
+		cmd_button "${2}"
+		;;
+	logs)
+		[ -n "${2:-}" ] || { usage; exit 2; }
+		journalctl -u "${2}" -b -n "${3:-80}" --no-pager
+		;;
+	-h | --help | help) usage ;;
+	*) usage; exit 2 ;;
+esac

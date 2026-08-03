@@ -1,0 +1,13 @@
+# Every app that takes the panel under SDL kmsdrm — exactly one may run.
+# One name per line, no ".service" suffix. install-ranger-app.sh renders each
+# new app's Conflicts= line from this list (minus the app itself), and
+# patchbox-app reads it to know what to stand down on a switch.
+# Adding kiosk app #9 is one line here.
+rk00pi
+chordranger
+midiranger
+genranger
+phraseranger
+sceneranger
+grooveranger
+synthranger
