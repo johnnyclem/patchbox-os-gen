@@ -7,14 +7,21 @@ running Patchbox unit.
 
 ## In the image
 
-`stage3/11-install-chordranger` does it. Defaults in the repo's `config`:
+`stage3/13-install-chordranger` does it. Defaults in the repo's `config`:
 
 | Variable | Default | Meaning |
 |----------|---------|---------|
 | `ENABLE_CHORDRANGER` | **1** | install to `/opt/chordranger` |
 | `ENABLE_CHORDRANGER_SERVICE` | **0** | enable the unit (and disable RK-00pi's) |
-| `CHORDRANGER_WIDTH` / `HEIGHT` | (HDMI dims) | written into `config.toml` |
+| `CHORDRANGER_WIDTH` / `HEIGHT` | (panel dims) | written into `config.toml` |
 | `CHORDRANGER_USER` | `chordranger` | service user |
+
+Panel geometry is resolved the same way `stage3/10-install-rk00pi` resolves
+it, so the two apps never disagree about what they are drawing on: an explicit
+`CHORDRANGER_WIDTH`/`HEIGHT` wins, else the HyperPixel profile
+(`ENABLE_HYPERPIXEL4=1` → 800×480), else the HDMI bar (1280×400). The panel
+picks its own chrome from those two numbers — side rails at 2:1 or wider, a
+stacked top band and bottom tabs otherwise — so nothing else needs setting.
 
 Installed but not enabled is the default on purpose: ChordRanger and RK-00pi
 both take the panel under SDL kmsdrm, and the image ships both. To build an
@@ -121,6 +128,11 @@ Everything else keeps working meanwhile; the rig is silent, not broken.
 hearing it. Check the bound port on SET, then `amidi -l` for what the DIN is
 called this boot, then whether the receiving device is listening on the
 channel the part is set to (BAND shows each part's channel).
+
+**No button at all.** The Pisound board is what carries it, and the default
+build profile has Pisound parked in favour of Pimidi. On a rig without it the
+app runs exactly the same — the socket simply has nothing pressing it, and
+every gesture has an on-screen equivalent.
 
 **Button does nothing.** `chordranger-btn PING`. Exit 2 means nothing is
 listening — the service is down, or `[button] enabled` is false, or the map

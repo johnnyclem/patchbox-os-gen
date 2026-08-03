@@ -455,7 +455,7 @@ for the same hardware — twelve chord pads (Chordcat), a six-section
 auto-accompaniment with fills that fire on the bar line (Yamaha QY), and a
 bass engine with its own voicing dial that is independent of the chord part
 (Orchid ORC-1). It lives in this repo rather than a submodule, and
-`stage3/11-install-chordranger` bakes it into `/opt/chordranger` with
+`stage3/13-install-chordranger` bakes it into `/opt/chordranger` with
 `chordranger.service`, `/etc/chordranger/config.toml` and a `chordranger-btn`
 bridge for The Button.
 

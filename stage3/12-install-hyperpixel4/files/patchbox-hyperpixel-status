@@ -1,0 +1,40 @@
+#!/bin/bash
+# HyperPixel 4 + touch diagnostics
+set -euo pipefail
+
+echo "=== config.txt (display) ==="
+grep -nE 'hyperpixel|hdmi_|dtoverlay=vc4|max_framebuffers' /boot/firmware/config.txt 2>/dev/null || true
+echo
+echo "=== cmdline ==="
+cat /boot/firmware/cmdline.txt 2>/dev/null || true
+echo
+echo
+echo "=== DRM ==="
+if [ -d /sys/class/drm ]; then
+	for c in /sys/class/drm/card*-*; do
+		[ -e "$c/status" ] || continue
+		name=$(basename "$c")
+		st=$(cat "$c/status" 2>/dev/null || echo '?')
+		en=$(cat "$c/enabled" 2>/dev/null || echo '?')
+		modes=""
+		[ -f "$c/modes" ] && modes=$(head -5 "$c/modes" | tr '\n' ' ')
+		echo "  $name status=$st enabled=$en modes=[$modes]"
+	done
+fi
+echo
+echo "=== touch / Goodix ==="
+grep -E 'Name=|Handlers=' /proc/bus/input/devices 2>/dev/null | head -40 || true
+ls -la /dev/input/event* 2>/dev/null | head -15 || true
+if id rk00pi >/dev/null 2>&1; then
+	if id -nG rk00pi 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+		echo "rk00pi ∈ input: yes"
+	else
+		echo "rk00pi ∈ input: NO"
+	fi
+fi
+echo
+echo "=== Pimidi (if stacked) ==="
+amidi -l 2>/dev/null || true
+lsmod | grep -E 'snd_pimidi|i2c' || true
+echo
+echo "See ~/HYPERPIXEL4.txt"

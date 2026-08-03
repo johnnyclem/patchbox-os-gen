@@ -1,7 +1,7 @@
 # ChordRanger
 
 A chord-first backing band for the Patchbox OS / RK-00pi rig: a Raspberry Pi 5
-with a Blokas Pisound and a 1280×400 touch bar.
+with a Blokas MIDI interface and a 1280×400 touch bar.
 
 You hold a chord. The band plays it.
 
@@ -65,6 +65,10 @@ python main.py --size 480x800     # the portrait panel
 Keyboard shortcuts on the bench: space plays, `1`–`9` tap pads, `[` and `]`
 nudge the tempo, tab cycles screens, `p` panics, escape quits.
 
+The panel derives its whole layout from two numbers, so both build profiles
+work: the 1280×400 HDMI bar gets side rails, and the 800×480 HyperPixel (or
+the 480×800 4") gets a stacked top band with bottom tabs.
+
 On the appliance the image installs it to `/opt/chordranger` and it is a
 `systemctl` away — see [docs/deploy.md](docs/deploy.md). ChordRanger and
 RK-00pi both render through SDL's KMS/DRM backend and there is one panel, so
@@ -92,9 +96,11 @@ Five tabs down the right, transport down the left, content in between.
 
 ## The Button
 
-The Pisound button works the way it does on RK-00pi, deliberately — an
-operator who knows one appliance should not have to learn the other's
-plumbing.
+Where the rig has a Pisound board, its button works the way it does on
+RK-00pi — deliberately, so an operator who knows one appliance does not have
+to learn the other's plumbing. On a build without Pisound the bridge is still
+installed and simply has nothing pressing it; every gesture below has an
+on-screen equivalent.
 
 | Gesture | Action |
 |---------|--------|
@@ -128,7 +134,7 @@ gui/          pygame. theme tokens, widgets, one module per tab
 data/         the factory styles and chordsets, in code so a wiped card boots
 deploy/       config.toml, the systemd unit, the button scripts
 bench/        render every screen to PNG without a display
-tests/        330-odd tests, all of which run headless
+tests/        295 tests, all of which run headless
 ```
 
 The one rule worth stating: **nothing in `core/` may import pygame or open a

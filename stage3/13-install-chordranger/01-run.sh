@@ -26,8 +26,19 @@ if [ ! -f "${CR_SRC}/main.py" ] || [ ! -f "${CR_SRC}/deploy/chordranger.service"
 	exit 1
 fi
 
-W="${CHORDRANGER_WIDTH:-${HDMI_WIDTH:-1280}}"
-H="${CHORDRANGER_HEIGHT:-${HDMI_HEIGHT:-400}}"
+# Panel geometry, resolved the same way stage3/10-install-rk00pi does it so the
+# two apps never disagree about what they are drawing on: an explicit override
+# wins, then the HyperPixel profile, then the HDMI bar.
+if [ -n "${CHORDRANGER_WIDTH}" ] && [ -n "${CHORDRANGER_HEIGHT}" ]; then
+	W="${CHORDRANGER_WIDTH}"
+	H="${CHORDRANGER_HEIGHT}"
+elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
+	W="${HYPERPIXEL_WIDTH:-800}"
+	H="${HYPERPIXEL_HEIGHT:-480}"
+else
+	W="${HDMI_WIDTH:-1280}"
+	H="${HDMI_HEIGHT:-400}"
+fi
 APP_USER="${CHORDRANGER_USER:-chordranger}"
 PREFIX=/opt/chordranger
 DATA_DIR=/var/lib/chordranger

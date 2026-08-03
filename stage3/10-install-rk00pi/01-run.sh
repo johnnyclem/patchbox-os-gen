@@ -22,8 +22,17 @@ if [ ! -f "${RK_SRC}/main.py" ] || [ ! -f "${RK_SRC}/deploy/rk00pi.service" ]; t
 	exit 1
 fi
 
-W="${RK00PI_WIDTH:-${HDMI_WIDTH:-1280}}"
-H="${RK00PI_HEIGHT:-${HDMI_HEIGHT:-400}}"
+# Panel size priority: explicit RK00PI_* → HyperPixel → HDMI ultrawide defaults
+if [ -n "${RK00PI_WIDTH}" ] && [ -n "${RK00PI_HEIGHT}" ]; then
+	W="${RK00PI_WIDTH}"
+	H="${RK00PI_HEIGHT}"
+elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
+	W="${HYPERPIXEL_WIDTH:-800}"
+	H="${HYPERPIXEL_HEIGHT:-480}"
+else
+	W="${HDMI_WIDTH:-1280}"
+	H="${HDMI_HEIGHT:-400}"
+fi
 APP_USER="${RK00PI_USER:-rk00pi}"
 PREFIX=/opt/rk00pi
 DATA_DIR=/var/lib/rk00pi
@@ -82,6 +91,32 @@ sed -i \
 	-e "s|^data_dir = .*|data_dir = \"${DATA_DIR}\"|" \
 	-e "s|^presets_dir = .*|presets_dir = \"${DATA_DIR}/presets\"|" \
 	"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
+# Tape: soft-null on Pimidi-only (no PiSound PCM); hw:pisound when button HAT present.
+TAPE_DEVICE="null"
+if [ "${ENABLE_RK00PI_BUTTON:-0}" = "1" ] && [ "${ENABLE_PIMIDI:-0}" != "1" ]; then
+	TAPE_DEVICE="hw:pisound"
+fi
+if grep -qE '^\[tape\]' "${ROOTFS_DIR}${CONFIG_DIR}/config.toml"; then
+	sed -i \
+		-e '/^\[tape\]/,/^\[/{s/^enabled = .*/enabled = true/}' \
+		-e "/^\[tape\]/,/^\[/{s/^device = .*/device = \"${TAPE_DEVICE}\"/}" \
+		-e '/^\[tape\]/,/^\[/{s/^period_frames = .*/period_frames = 512/}' \
+		-e '/^\[tape\]/,/^\[/{s/^link_transport = .*/link_transport = "follow_start_stop"/}' \
+		-e '/^\[tape\]/,/^\[/{s/^color = .*/color = "per_track"/}' \
+		-e '/^\[tape\]/,/^\[/{s/^monitor = .*/monitor = true/}' \
+		"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
+	echo "  [tape] enabled + device=${TAPE_DEVICE}"
+fi
+# MIDI: hub endpoints match the HAT; prefer_pisound is historical only.
+if grep -qE '^prefer_pisound' "${ROOTFS_DIR}${CONFIG_DIR}/config.toml"; then
+	if [ "${ENABLE_PIMIDI:-0}" = "1" ]; then
+		sed -i 's/^prefer_pisound = .*/prefer_pisound = false/' \
+			"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
+	else
+		sed -i 's/^prefer_pisound = .*/prefer_pisound = true/' \
+			"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
+	fi
+fi
 
 # --- systemd unit ------------------------------------------------------------
 # Includes RuntimeDirectory=rk00pi for The Button socket (/run/rk00pi/button.sock)
@@ -197,6 +232,8 @@ install -m 755 files/patchbox-fix-input-button \
 	"${ROOTFS_DIR}/usr/local/sbin/patchbox-fix-input-button"
 install -m 755 files/patchbox-diag-input-button \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-diag-input-button"
+install -m 755 files/patchbox-boot-kiosk \
+	"${ROOTFS_DIR}/usr/local/sbin/patchbox-boot-kiosk"
 
 # Brief note for the login user (alongside DISPLAY-PISOUND.txt)
 install -d "${ROOTFS_DIR}/home/${FIRST_USER_NAME}"
@@ -205,9 +242,13 @@ Patchbox OS — RK-00pi (main appliance)
 ======================================
 
 What boots
-  multi-user.target → rk00pi.service
+  multi-user.target → rk00pi.service  (NOT graphical / LightDM)
   SDL_VIDEODRIVER=kmsdrm fullscreen on the HDMI ${W}x${H} panel
   Pisound = MIDI DIN + 1/4" audio (prefer_pisound=true)
+  If you ever land on the Linux desktop instead:
+    sudo systemctl set-default multi-user.target
+    sudo systemctl disable lightdm
+    sudo reboot
 
 The Button (PiSound board)
   1 click     play / stop transport
@@ -243,10 +284,15 @@ Gates
   driver ships as "null" — do NOT wire GPIO to eurorack without a
   buffered/level-shifted stage. See /opt/rk00pi/docs/deploy.md
 
-Desktop (optional)
-  Patchbox still ships the LXDE stack. Default boot is console + RK-00pi.
-  To open the desktop:  sudo systemctl start lightdm
-  (kmsdrm and X cannot both own the panel — stop rk00pi first if needed)
+Desktop (optional, not the default)
+  Patchbox still ships LXDE/LightDM. Default boot is console + RK-00pi.
+  To open the desktop for a session:
+    sudo systemctl stop rk00pi && sudo systemctl start lightdm
+  To make desktop the boot default again (not recommended for the appliance):
+    sudo systemctl set-default graphical.target && sudo systemctl enable lightdm
+  Back to kiosk:
+    sudo systemctl set-default multi-user.target
+    sudo systemctl disable lightdm && sudo systemctl enable rk00pi && sudo reboot
 
 SSH
   ssh ${FIRST_USER_NAME}@${HOSTNAME}.local
@@ -307,13 +353,92 @@ if ! sudo -u "\${APP_USER}" "\${PIP}" install --no-cache-dir -r "\${PREFIX}/requ
 	done
 fi
 
+# Build the RK-424 tape DSP (optional; soft deck still runs without it).
+if [ -f "${PREFIX}/native/tape/Makefile" ]; then
+	echo "building native tape DSP (librk424.so)"
+	if command -v g++ >/dev/null 2>&1; then
+		make -C "${PREFIX}/native/tape" clean >/dev/null 2>&1 || true
+		if make -C "${PREFIX}/native/tape"; then
+			chown -R "${APP_USER}:${APP_USER}" "${PREFIX}/native/tape" || true
+			if make -C "${PREFIX}/native/tape" info 2>/dev/null | grep -q "ALSA     = yes"; then
+				echo "  tape DSP built with ALSA"
+			else
+				echo "  tape DSP built WITHOUT ALSA (install libasound2-dev for hw:pisound)"
+			fi
+		else
+			echo "  warning: tape DSP build failed — soft deck only"
+		fi
+	else
+		echo "  warning: g++ missing — skipping tape DSP"
+	fi
+fi
+
+# Starter project: hub preset (Pimidi 2×2 / Pisound) + optional Warm Bump tape colour.
+HUB_PRESET_NAME="${RK00PI_HUB_PRESET:-pimidi-2x2}"
+if [ -x "${PREFIX}/venv/bin/python" ] && [ -f "${PREFIX}/core/project.py" ]; then
+	echo "seeding ${DATA_DIR}/projects/starter.rkproj (hub=${HUB_PRESET_NAME})"
+	sudo -u "${APP_USER}" env PYTHONPATH="${PREFIX}" HUB_PRESET_NAME="${HUB_PRESET_NAME}" \
+		"${PREFIX}/venv/bin/python" - <<'PY' || echo "  warning: starter project seed failed"
+from pathlib import Path
+import os
+import sys
+sys.path.insert(0, "/opt/rk00pi")
+from core.project import Project, load_hub_preset
+from core.tape import ColorMode
+from core.tape_presets import load_preset
+projects = Path("/var/lib/rk00pi/projects")
+projects.mkdir(parents=True, exist_ok=True)
+starter = projects / "starter.rkproj"
+p = Project(name="starter")
+hub_name = os.environ.get("HUB_PRESET_NAME", "pimidi-2x2")
+hub_path = Path("/var/lib/rk00pi/presets") / f"{hub_name}.rkhub"
+if not hub_path.is_file():
+    hub_path = Path("/opt/rk00pi/data/presets") / f"{hub_name}.rkhub"
+if hub_path.is_file():
+    p.hub = load_hub_preset(hub_path)
+    print("hub:", hub_path)
+else:
+    print("warning: hub preset missing", hub_path)
+tape_preset = Path("/var/lib/rk00pi/presets/tape/warm-bump.portapreset")
+if tape_preset.is_file():
+    load_preset(tape_preset).apply_to(p.tape.params)
+p.tape.enabled = True
+p.tape.color_mode = ColorMode.PER_TRACK
+p.tape.monitor = True
+p.save(starter)
+print("wrote", starter)
+PY
+fi
+
 # Do not start during image build (no KMS panel). Enable for first boot.
 systemctl daemon-reload
 if [ "${ENABLE_RK00PI_SERVICE:-1}" = "1" ]; then
 	systemctl enable rk00pi.service
-	# Console + kiosk is already multi-user (stage3/01-misc-config).
+	# Appliance boot: console + kiosk, NOT the LXDE desktop.
+	# Stage3/04 still ships LightDM for optional lab use, but graphical.target
+	# must not win over multi-user — SDL kmsdrm cannot share the panel with X.
 	systemctl set-default multi-user.target
-	echo "rk00pi.service enabled (WantedBy=multi-user.target)"
+	systemctl disable lightdm.service 2>/dev/null || true
+	# If something re-enabled graphical (raspi-config, desktop meta), force the symlink.
+	ln -sfn /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+	# JACK fights exclusive PCM (when tape uses a card). Hub owns MIDI routing
+	# — Patchbox amidiauto *→* races bind_input (EBUSY → unbound din_in).
+	systemctl disable jack.service 2>/dev/null || true
+	systemctl disable amidiauto.service 2>/dev/null || true
+	# Drop-in: keep desktop audio stacks off the HAT + load starter project
+	mkdir -p /etc/systemd/system/rk00pi.service.d
+	cat > /etc/systemd/system/rk00pi.service.d/20-tape-starter.conf <<'UNIT'
+[Service]
+ExecStartPre=+/bin/systemctl stop jack.service
+ExecStartPre=+/bin/systemctl stop amidiauto.service
+ExecStartPre=-+/usr/bin/pkill -x jackd
+ExecStartPre=-+/usr/bin/pkill -u patch -x wireplumber
+ExecStartPre=-+/usr/bin/pkill -u patch -x pipewire
+ExecStartPre=-+/usr/bin/pkill -u patch -x pipewire-pulse
+ExecStart=
+ExecStart=/opt/rk00pi/venv/bin/python main.py --fullscreen --config /etc/rk00pi/config.toml --project /var/lib/rk00pi/projects/starter.rkproj
+UNIT
+	echo "rk00pi.service enabled; multi-user; lightdm/jack/amidiauto disabled; starter hub=${HUB_PRESET_NAME:-pimidi-2x2}"
 else
 	systemctl disable rk00pi.service 2>/dev/null || true
 	echo "rk00pi.service installed but disabled (ENABLE_RK00PI_SERVICE!=1)"

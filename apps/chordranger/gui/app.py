@@ -33,6 +33,38 @@ from gui.widgets import HitMap, button, column, lcd, panel, row, text
 
 log = logging.getLogger("chordranger.gui")
 
+
+def _transport_row(rect, pairs=(1, 3), count: int = 6, gap: int = 5):
+    """Slice a horizontal transport band into *count* cells.
+
+    ``widgets.row`` divides evenly, which is wrong here twice over: a
+    four-digit readout needs more room than a "+" key, and two of these cells
+    are each subdivided into a *pair* of buttons. On the 480 px-wide 4" panel
+    an even split leaves those buttons 24 px across — well under the 44 px a
+    finger can hit.
+
+    So the pair cells are given their floor first (two touch targets plus the
+    gap between them) and whatever is left is shared out among the readouts.
+    Guaranteeing the smallest target rather than proportioning everything is
+    what keeps the band usable as the panel gets narrower.
+    """
+    # A pair cell is subdivided again by ``widgets.row``, which takes its own
+    # gap out of each half — so the floor is two targets *plus* that gap
+    # twice, not once. Getting this wrong is how the buttons end up 42 px.
+    inner_gap = 4
+    pair_floor = 2 * (theme.TOUCH_MIN + inner_gap)
+    spare = rect.width - len(pairs) * (pair_floor + gap)
+    others = count - len(pairs)
+    other_w = max(theme.TOUCH_MIN, spare // max(1, others)) if others else 0
+    cells, x = [], rect.x
+    for index in range(count):
+        span = pair_floor if index in pairs else other_w
+        if index == count - 1:
+            span = max(span, rect.right - x)    # absorb the remainder
+        cells.append(pygame.Rect(x, rect.y, max(1, span), rect.height))
+        x += span + gap
+    return cells
+
 SCREENS = (PerformScreen, ChordScreen, BandScreen, SongScreen,
            SettingsScreen)
 MESSAGE_MS = 2500
@@ -292,9 +324,25 @@ class App:
         self._draw_message()
 
     def _draw_transport(self, snapshot: EngineSnapshot) -> None:
+        """The six transport controls, laid out along whichever axis the
+        chrome runs.
+
+        On the 1280x400 bar the transport is a tall rail down the left edge
+        and the controls stack. On a portrait or squarer panel — the 800x480
+        HyperPixel, the 480x800 4" — it is a short band across the top, and
+        stacking six cells into 88 px of height puts every control at 13 px
+        and turns the band into an unreadable smear. Same controls, same
+        keys, one axis apart.
+        """
         rect = self.layout.transport
         panel(self.surface, rect, theme.BG)
-        cells = column(rect.inflate(-8, -8), 6, gap=5)
+        inner = rect.inflate(-8, -8)
+        if self.layout.wide:
+            cells = column(inner, 6, gap=5)
+        else:
+            # Cells 1 and 3 each hold a pair of buttons, so they get their
+            # touch floor before the readouts get proportioned.
+            cells = _transport_row(inner, pairs=(1, 3), count=6)
         lcd(self.surface, cells[0], f"{snapshot.bpm:.0f}", size=30,
             label="BPM")
         bpm = row(cells[1], 2, gap=4)
@@ -319,6 +367,8 @@ class App:
                color=theme.DANGER)
 
     def _draw_tabs(self) -> None:
+        """Tab rail. Down the right edge when wide, across the bottom when
+        not — ``Layout`` already decided which, and handed over the rects."""
         for index, rect in enumerate(self.layout.tabs):
             screen = self.screens[index]
             active = index == self.tab

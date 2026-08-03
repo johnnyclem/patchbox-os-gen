@@ -283,3 +283,46 @@ def test_messages_appear_and_expire(app):
     assert app._message == "HELLO"
     app._message_until = 0
     _frame(app)                      # drawn without the banner, no raise
+
+
+# --- other panels ---------------------------------------------------------------
+# The 800x480 HyperPixel profile and the 480x800 4" panel both get *stacked*
+# chrome — a short transport band across the top rather than a tall rail. The
+# transport originally laid its six controls out as a column regardless, which
+# on an 88 px band put every control at 13 px and turned it into a smear. These
+# assert the band stays usable on every size the image can be built for.
+
+@pytest.mark.parametrize("size", [(1280, 400), (800, 480), (480, 800)])
+def test_the_transport_is_usable_on_every_shipped_panel(size):
+    engine = Engine(default_project(), CaptureMidiIO(), FakeClock())
+    app = App(engine, size=size)
+    try:
+        _frame(app, 2)
+        keys = ("bpm-", "bpm+", "play", "rec", "panic")
+        rects = []
+        for key in keys:
+            rect = app.chrome.rect_for(key)
+            assert rect is not None, f"{key} missing at {size}"
+            assert rect.width >= theme.TOUCH_MIN, f"{key} too narrow at {size}"
+            assert rect.height >= 24, f"{key} too short at {size}"
+            rects.append((key, rect))
+        for index, (key, rect) in enumerate(rects):
+            for other_key, other in rects[index + 1:]:
+                assert not rect.colliderect(other), \
+                    f"{key} overlaps {other_key} at {size}"
+    finally:
+        pygame.display.quit()
+
+
+@pytest.mark.parametrize("size", [(1280, 400), (800, 480), (480, 800)])
+def test_every_screen_draws_on_every_shipped_panel(size):
+    engine = Engine(default_project(), CaptureMidiIO(), FakeClock())
+    app = App(engine, size=size)
+    try:
+        for index in range(len(app.screens)):
+            app.tab = index
+            _frame(app, 2)
+            assert len(app.screens[index].hits) >= 6, \
+                f"{app.screens[index].title} has no controls at {size}"
+    finally:
+        pygame.display.quit()

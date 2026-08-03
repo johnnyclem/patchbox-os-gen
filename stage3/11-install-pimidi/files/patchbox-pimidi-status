@@ -1,0 +1,25 @@
+#!/bin/bash
+# Pimidi + RK-00pi MIDI quick status
+set -euo pipefail
+
+echo "=== Pimidi / boot ==="
+if [ -f /boot/firmware/config.txt ]; then
+	grep -nE 'pimidi|i2c_arm' /boot/firmware/config.txt || true
+fi
+echo
+echo "=== kernel module ==="
+lsmod | grep -E 'snd_pimidi|i2c' || echo "(snd_pimidi not loaded)"
+echo
+echo "=== amidi ==="
+amidi -l 2>&1 || true
+echo
+echo "=== aconnect ==="
+aconnect -l 2>&1 || true
+echo
+echo "=== rk00pi ==="
+systemctl is-active rk00pi 2>/dev/null || true
+if [ -f /etc/rk00pi/config.toml ]; then
+	grep -E '^(prefer_|backend|enabled|device)' /etc/rk00pi/config.toml | head -20 || true
+fi
+echo
+echo "See ~/PIMIDI.txt"
