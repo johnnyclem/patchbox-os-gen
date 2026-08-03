@@ -10,18 +10,22 @@
 #   ./scripts/fix-hyperpixel4-bootfs.sh
 #   ./scripts/fix-hyperpixel4-bootfs.sh /Volumes/bootfs
 #   ./scripts/fix-hyperpixel4-bootfs.sh --rotate 270 /Volumes/bootfs
+#   ./scripts/fix-hyperpixel4-bootfs.sh --rotate none /Volumes/bootfs  # black-screen only
+#
+# Default --rotate is left/270 so the FB is landscape 800×480 (matches the app).
+# none leaves a portrait 480×800 mode (panel may paint but UI is sideways).
 #
 # Then eject the card, boot the Pi, and run: patchbox-hyperpixel-status
 set -euo pipefail
 
-ROT="none"
+ROT="left"
 BOOTFS=""
 
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--rotate) ROT=$2; shift 2 ;;
 		-h|--help)
-			sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
+			sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'
 			exit 0
 			;;
 		*)
@@ -112,7 +116,9 @@ echo "after:"
 grep -nE 'hyperpixel|hdmi_|pimidi|i2c_arm|vc4-kms' "$CFG" || true
 [ -f "$CMD" ] && echo "cmdline: $(tr -d '\n' < "$CMD")"
 echo
-echo "Wrote ${OVERLAY}"
+echo "Wrote ${OVERLAY}  (rotate=${ROT})"
 echo "Eject the SD card, boot the Pi."
-echo "If still black: try --rotate none (default) then --rotate 270."
-echo "On-device: sudo patchbox-fix-hyperpixel4   (if the helper is installed)"
+echo "Expect landscape: DPI modes include 800x480, app size 800x480."
+echo "If still black: re-run with --rotate none, then on-device:"
+echo "  sudo patchbox-fix-hyperpixel4 --rotate 270 && sudo reboot"
+echo "If paints but UI is sideways: sudo patchbox-fix-hyperpixel4 --rotate 270"

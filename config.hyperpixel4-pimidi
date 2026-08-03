@@ -27,8 +27,10 @@ ENABLE_WAVESHARE_DPI=0
 HYPERPIXEL_WIDTH=800
 HYPERPIXEL_HEIGHT=480
 HYPERPIXEL_REFRESH=60
-# none = most reliable first bring-up; use left/270 once the panel paints
-HYPERPIXEL_ROTATE=none
+# left/270 = landscape FB (800×480) matching the app. none leaves a portrait
+# 480×800 mode (panel paints but UI is sideways). Use none only for black-screen
+# bring-up: sudo patchbox-fix-hyperpixel4 --rotate none
+HYPERPIXEL_ROTATE=left
 # Do not force video=DPI-1:… (wrong mode → black). Overlay carries timings.
 HYPERPIXEL_CMDLINE_VIDEO=0
 # Do not keep pimidi DT on the header (GPIO clash → black panel).

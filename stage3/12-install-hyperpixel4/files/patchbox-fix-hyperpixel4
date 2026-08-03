@@ -1,23 +1,28 @@
 #!/bin/bash
-# Field-enable Pimoroni HyperPixel 4 rectangular on a running Patchbox image.
+# Field-enable / re-orient Pimoroni HyperPixel 4 rectangular on a running image.
 #
-# Typical failure mode this fixes:
+# Typical failure modes this fixes:
 #   • Image was built for HDMI ultrawide (Profile A) → no DPI overlay
 #   • Backlight flashes at power-on, then panel stays black
 #   • Pimidi / i2c_arm / forced hdmi_* modes hold pins the DPI panel needs
+#   • Panel paints but FB is portrait 480×800 while the app is 800×480
+#     (sideways UI) — default --rotate 270 / left fixes that
 #
 # Usage:
-#   sudo patchbox-fix-hyperpixel4              # bare overlay (bring-up)
-#   sudo patchbox-fix-hyperpixel4 --rotate 270  # landscape "left"
+#   sudo patchbox-fix-hyperpixel4              # landscape left (product default)
+#   sudo patchbox-fix-hyperpixel4 --rotate 270  # same as default
+#   sudo patchbox-fix-hyperpixel4 --rotate none # bare overlay if rotate blacks panel
 #   sudo patchbox-fix-hyperpixel4 --keep-pimidi # NOT recommended (GPIO clash)
 #   sudo patchbox-fix-hyperpixel4 --square      # HyperPixel 4 Square
 #   sudo patchbox-fix-hyperpixel4 --video       # also set video=DPI-1:…
 #
 # After reboot: patchbox-hyperpixel-status
+# Expect DPI modes to include 800x480 (not only 480x800).
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 
-ROT="none"
+# Product default: landscape FB matching RK-00pi / ranger 800×480.
+ROT="left"
 KEEP_PIMIDI=0
 SQUARE=0
 SET_VIDEO=0
@@ -33,7 +38,7 @@ while [ $# -gt 0 ]; do
 		--video) SET_VIDEO=1; shift ;;
 		--width) W=$2; shift 2 ;;
 		--height) H=$2; shift 2 ;;
-		-h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+		-h|--help) sed -n '2,22p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "unknown: $1"; exit 1 ;;
 	esac
 done
@@ -141,13 +146,69 @@ if [ -f "$CMD" ]; then
 	rm -f "${CMD}.1"
 fi
 
-# Point kiosk geometry at panel if configs exist
-for conf in /etc/rk00pi/config.toml /etc/chordranger/config.toml; do
+# Point kiosk geometry at panel if configs exist (landscape dims).
+for conf in /etc/rk00pi/config.toml /etc/chordranger/config.toml \
+	/etc/midiranger/config.toml /etc/genranger/config.toml \
+	/etc/phraseranger/config.toml; do
 	if [ -f "$conf" ]; then
 		sed -i -E "s/^(width\\s*=\\s*)[0-9]+/\\1${W}/; s/^(height\\s*=\\s*)[0-9]+/\\1${H}/" "$conf" 2>/dev/null || true
 		echo "updated geometry in $conf → ${W}x${H}"
 	fi
 done
+
+# Keep touch calibration in sync with display rotation (kmsdrm + X11).
+case "$ROT" in
+	left|270) MAT="0 -1 1 1 0 0"; XMAT="0 -1 1 1 0 0 0 0 1" ;;
+	right|90) MAT="0 1 0 -1 0 1"; XMAT="0 1 0 -1 0 1 0 0 1" ;;
+	inverted|180) MAT="-1 0 1 0 -1 1"; XMAT="-1 0 1 0 -1 1 0 0 1" ;;
+	*) MAT="1 0 0 0 1 0"; XMAT="1 0 0 0 1 0 0 0 1" ;;
+esac
+install -d /etc/udev/hwdb.d
+cat > /etc/udev/hwdb.d/61-hyperpixel4-touch.hwdb <<EOF
+# HyperPixel 4 rectangular Goodix — match display rotation (${ROT})
+evdev:name:*Goodix*:
+evdev:name:*goodix*:
+ LIBINPUT_CALIBRATION_MATRIX=${MAT}
+EOF
+echo "updated touch hwdb matrix for rotate=${ROT}: ${MAT}"
+if command -v systemd-hwdb >/dev/null 2>&1; then
+	systemd-hwdb update 2>/dev/null || true
+elif command -v udevadm >/dev/null 2>&1; then
+	udevadm hwdb --update 2>/dev/null || true
+fi
+if command -v udevadm >/dev/null 2>&1; then
+	udevadm trigger 2>/dev/null || true
+fi
+if [ -d /etc/X11/xorg.conf.d ]; then
+	cat > /etc/X11/xorg.conf.d/40-libinput-hyperpixel4.conf <<EOF
+# HyperPixel 4 rectangular — Goodix (X11 / LightDM only). rotate=${ROT}
+Section "InputClass"
+	Identifier "HyperPixel4 Goodix"
+	MatchProduct "Goodix"
+	MatchIsTouchscreen "on"
+	MatchDevicePath "/dev/input/event*"
+	Driver "libinput"
+	Option "CalibrationMatrix" "${XMAT}"
+EndSection
+EOF
+	echo "updated X11 libinput calibration matrix"
+fi
+
+# Pi 5: kiosk SDL must open the DPI card (often not card0).
+install -d /etc/systemd/system/rk00pi.service.d
+cat > /etc/systemd/system/rk00pi.service.d/30-hyperpixel-kms.conf <<'EOF'
+[Service]
+# Pi 5 + HyperPixel: DPI is typically /dev/dri/card2
+Environment=SDL_KMSDRM_DEVICE_INDEX=2
+EOF
+for unit in chordranger midiranger genranger phraseranger; do
+	if [ -d "/etc/systemd/system/${unit}.service.d" ] || systemctl cat "${unit}.service" >/dev/null 2>&1; then
+		install -d "/etc/systemd/system/${unit}.service.d"
+		cp /etc/systemd/system/rk00pi.service.d/30-hyperpixel-kms.conf \
+			"/etc/systemd/system/${unit}.service.d/30-hyperpixel-kms.conf"
+	fi
+done
+systemctl daemon-reload 2>/dev/null || true
 
 echo
 echo "Wrote: ${OVERLAY}"
@@ -159,6 +220,11 @@ else
 	echo "Removed: hdmi_* force modes, dtoverlay=pimidi, dtparam=i2c_arm (GPIO free for DPI)."
 	echo "MIDI: use USB host, or rebuild Profile A (HDMI + Pimidi)."
 fi
+echo
+echo "Orientation: rotate=${ROT}  app geometry=${W}x${H}"
+echo "  After reboot, patchbox-hyperpixel-status should list ${W}x${H} in DPI modes."
+echo "  If still portrait (480x800) and UI sideways: try --rotate 90 (right)."
+echo "  If panel goes black: sudo patchbox-fix-hyperpixel4 --rotate none && sudo reboot"
 echo
 echo "Reboot now:  sudo reboot"
 echo "Then check:  patchbox-hyperpixel-status"

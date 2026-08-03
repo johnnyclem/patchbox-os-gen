@@ -15,6 +15,28 @@ else
 	echo "(missing $CFG)"
 fi
 echo
+echo "=== orientation (expect landscape 800x480 with app) ==="
+if [ -f "$CFG" ]; then
+	if grep -qE 'dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270' "$CFG" 2>/dev/null; then
+		echo "overlay rotate=270 (left) — landscape product default"
+	elif grep -qE 'dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=' "$CFG" 2>/dev/null; then
+		grep -E 'dtoverlay=vc4-kms-dpi-hyperpixel4' "$CFG" | sed 's/^/  /'
+	elif grep -qE 'dtoverlay=vc4-kms-dpi-hyperpixel4' "$CFG" 2>/dev/null; then
+		echo "WARNING: overlay has no rotate= — FB is often portrait 480x800"
+		echo "  while the app is 800x480 (sideways UI)."
+		echo "  Fix: sudo patchbox-fix-hyperpixel4 --rotate 270 && sudo reboot"
+	else
+		echo "no hyperpixel overlay in config.txt"
+	fi
+fi
+for conf in /etc/rk00pi/config.toml /etc/chordranger/config.toml; do
+	if [ -f "$conf" ]; then
+		w=$(grep -E '^\s*width\s*=' "$conf" | head -1 | sed -E 's/.*=\s*//')
+		h=$(grep -E '^\s*height\s*=' "$conf" | head -1 | sed -E 's/.*=\s*//')
+		echo "app geometry $conf: ${w}x${h}"
+	fi
+done
+echo
 echo "=== cmdline ==="
 cat "$CMD" 2>/dev/null || true
 echo

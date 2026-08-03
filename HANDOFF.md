@@ -25,18 +25,33 @@ only flashes its backlight. Fix without rebuild (SD in Mac):
 
 ```bash
 ./scripts/fix-hyperpixel4-bootfs.sh /Volumes/bootfs
+# default --rotate left (270) for landscape 800×480
 ```
 
 On a booted Pi (SSH): `sudo patchbox-fix-hyperpixel4 && sudo reboot`.  
 Do **not** stack `dtoverlay=pimidi` with HyperPixel — DPI needs the header.
 
+**Portrait FB / landscape app (sideways UI):** early bring-up used
+`HYPERPIXEL_ROTATE=none`, so DRM often listed **480×800** while the kiosk was
+baked at **800×480**. Product default is now `HYPERPIXEL_ROTATE=left`
+(`dtoverlay=…,rotate=270`). On a unit that already paints:
+
+```bash
+sudo patchbox-fix-hyperpixel4 --rotate 270
+sudo reboot
+# then: patchbox-hyperpixel-status  → DPI modes should include 800x480
+```
+
+If `rotate=270` blacks the panel, fall back to `--rotate none`, then try
+`--rotate 90`. Touch calibration is rewritten with the same helper.
+
 ```text
 Raspberry Pi 5
   ├── Pimoroni HyperPixel 4.0" rectangular (owns 40-pin)
-  │     • 800×480 @ 60 FPS DPI (dtoverlay=vc4-kms-dpi-hyperpixel4)
-  │     • Goodix capacitive touch
+  │     • 800×480 @ 60 FPS DPI (dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270)
+  │     • Goodix capacitive touch (matrix matches left rotation)
   ├── USB MIDI (recommended) — Pimidi DT overlay is NOT loaded
-  └── RK-00pi 800×480 (portrait chrome — aspect < 2:1)
+  └── RK-00pi 800×480 (stacked chrome — aspect < 2:1)
 ```
 
 **GPIO:** HyperPixel uses ~28 pins — no room for Pimidi/Pisound DT on the same

@@ -21,14 +21,16 @@ if [ "${ENABLE_HYPERPIXEL4}" != "1" ]; then
 	exit 0
 fi
 
-# Native panel is 800×480 landscape glass; kernel often presents 480×800 until
-# rotated. Defaults below get a *picture first*; rotate later if needed.
+# Native panel is 800×480 landscape glass. Without rotate the kernel often
+# presents 480×800 (portrait FB) while the app is baked at 800×480 — UI looks
+# landscape on a portrait screen. Product default is left/270 so FB + app match.
+# Use HYPERPIXEL_ROTATE=none only when the panel stays black with rotate=*.
 W="${HYPERPIXEL_WIDTH:-800}"
 H="${HYPERPIXEL_HEIGHT:-480}"
 R="${HYPERPIXEL_REFRESH:-60}"
-# none = stock overlay only (most reliable first bring-up on Pi 5).
 # left|right|inverted|normal → dtoverlay ...,rotate=270|90|180|0 (degrees).
-ROT="${HYPERPIXEL_ROTATE:-none}"
+# none = stock overlay only (portrait bring-up fallback).
+ROT="${HYPERPIXEL_ROTATE:-left}"
 # Optional cmdline video=DPI-1:… (Pimoroni docs do NOT require this; default off).
 SET_VIDEO="${HYPERPIXEL_CMDLINE_VIDEO:-0}"
 # Allow experimental Pimidi stack (almost always blacks the panel). Default: drop.
@@ -94,8 +96,8 @@ if ! grep -qE '^max_framebuffers=' "${TMP}"; then
 	echo "max_framebuffers=2" >> "${TMP}"
 fi
 
-# Bare overlay is the known-good Pi 5 path (Pimoroni learn guide). Optional
 # rotate= in *degrees* (270 = landscape "left") — do NOT pass 0..3.
+# left/270 is the product default so DRM modes are 800×480 with the app.
 OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4"
 case "${ROT}" in
 	none|"")
@@ -114,7 +116,7 @@ case "${ROT}" in
 		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270"
 		;;
 	*)
-		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4"
+		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270"
 		;;
 esac
 
@@ -124,7 +126,8 @@ cat >> "${TMP}" <<EOF
 # Pimoroni DPI; in-tree on Bookworm/Pi 5. Touch = Goodix (soft I2C in overlay).
 # https://learn.pimoroni.com/getting-started-with-hyperpixel-4
 # https://github.com/pimoroni/hyperpixel4  (no legacy installer)
-# First bring-up: leave rotate=none if the panel stays black with rotate=*.
+# rotate=270 (left) → landscape 800×480 FB matching RK-00pi / ranger apps.
+# If the panel stays black, try HYPERPIXEL_ROTATE=none then re-add left.
 # Do not enable dtparam=i2c_arm / spi — they DT-conflict with DPI (PSA #177).
 ${OVERLAY_LINE}
 # --- end HyperPixel 4 ---
@@ -265,12 +268,20 @@ RK-00pi
   800x480 uses the stacked chrome (top transport + bottom tabs)
   because aspect < 2:1 (see gui/theme.is_wide).
 
+Orientation
+  FB modes should list ${W}x${H} (landscape). If you see 480x800 and the UI
+  is sideways, re-apply landscape rotation:
+    sudo patchbox-fix-hyperpixel4 --rotate 270
+    sudo reboot
+  Touch matrix is updated with the same command.
+
 Checks
   patchbox-hyperpixel-status
   ls /sys/class/drm/card*-DPI-*/status
   dmesg | grep -iE 'dpi|vc4|drm|hyperpixel'
-  # Healthy: a DPI connector status=connected with modes listed
+  # Healthy: DPI connected, modes include ${W}x${H}, app size matches
   # Broken:  only HDMI connectors, or dmesg "Cannot find any crtc or sizes"
+  # Sideways: portrait modes (480x800) with app still at 800x480 → rotate left
 EOF
 chown 1000:1000 "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/HYPERPIXEL4.txt" 2>/dev/null || true
 

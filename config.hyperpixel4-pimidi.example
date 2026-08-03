@@ -17,8 +17,9 @@ ENABLE_WAVESHARE_DPI=0
 HYPERPIXEL_WIDTH=800
 HYPERPIXEL_HEIGHT=480
 HYPERPIXEL_REFRESH=60
-# none first; left/270 once the picture is stable
-HYPERPIXEL_ROTATE=none
+# left/270 = landscape 800×480 FB (matches app). none = portrait 480×800
+# (panel may paint but UI is sideways). Fall back to none only if black.
+HYPERPIXEL_ROTATE=left
 HYPERPIXEL_CMDLINE_VIDEO=0
 HYPERPIXEL_KEEP_PIMIDI=0
 
