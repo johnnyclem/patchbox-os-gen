@@ -10,14 +10,20 @@
 name: chordranger
 
 on:
+  # push is scoped to the long-lived branches. Without that, a PR branch
+  # fires both events and every run happens twice — same commit, same
+  # result, two of every notification.
   push:
-    paths:
+    branches:
+      - patchbox-2024-01
+      - master
+      - main
+    paths: &paths
       - 'apps/chordranger/**'
+      - 'stage3/*-install-chordranger/**'
       - '.github/workflows/chordranger.yml'
   pull_request:
-    paths:
-      - 'apps/chordranger/**'
-      - '.github/workflows/chordranger.yml'
+    paths: *paths
   workflow_dispatch:
 
 defaults:
@@ -104,12 +110,41 @@ jobs:
       - uses: actions/checkout@v4
       - name: Parse the shipped scripts
         run: |
+          set -euo pipefail
           # The install stage and the button wrappers run on a device nobody
           # is watching, so a syntax error in them is a brick. Parse-only:
           # they cannot be executed off a Pi.
-          bash -n stage3/11-install-chordranger/01-run.sh
-          bash -n stage3/11-install-chordranger/files/patchbox-chordranger
+          #
+          # The stage directory is found by glob rather than named, because
+          # its number is a position in the build order and moves whenever a
+          # stage lands beside it — which is exactly what happened when
+          # Pimidi took 11. A hardcoded path breaks CI on a rename at best,
+          # and at worst quietly stops checking anything.
+          stage=$(echo stage3/*-install-chordranger)
+          if [ ! -d "$stage" ]; then
+            echo "no ChordRanger stage found under stage3/" >&2
+            exit 1
+          fi
+          echo "stage: $stage"
+          bash -n "$stage/01-run.sh"
+          bash -n "$stage/files/patchbox-chordranger"
+          bash -n config
           sh -n apps/chordranger/deploy/pisound/chordranger_click.sh
           sh -n apps/chordranger/deploy/pisound/chordranger_hold.sh
           python3 -m py_compile apps/chordranger/deploy/pisound/chordranger-btn
           echo "all shipped scripts parse"
+
+      - name: The stage ordinal must be unique
+        run: |
+          set -euo pipefail
+          # Two stages sharing a number is not a git conflict — the
+          # directories differ — so nothing else catches it. pi-gen would run
+          # both in an order nobody chose.
+          dupes=$(ls -d stage3/[0-9][0-9]-* | sed 's|.*/||; s|-.*||' \
+                  | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "duplicate stage3 ordinals: $dupes" >&2
+            ls -d stage3/[0-9][0-9]-* >&2
+            exit 1
+          fi
+          echo "stage3 ordinals are unique"
