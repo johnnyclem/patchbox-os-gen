@@ -139,6 +139,11 @@ class RangerEngine:
     HANDLERS: dict = {}
     #: Thread name shown in ``ps`` — override per app ("mr-engine", …).
     THREAD_NAME = "rk-engine"
+    #: Free-running engines (MidiRanger's echoes, LFOs) advance their tick and
+    #: run ``on_tick`` whether or not the transport is playing — a MIDI FX box
+    #: that goes dead when "stopped" is broken, not stopped. ``playing`` still
+    #: gates whatever the app decides is transport-bound (arps, clock out).
+    FREE_RUN = False
 
     def __init__(self, midi, clock=None, config=None,
                  bpm: float = 120.0) -> None:
@@ -228,17 +233,19 @@ class RangerEngine:
         FakeClock — the same code path playback uses, never a simulation."""
         self._drain()
         if self._external is not None and self._external_credit <= 0 \
-                and self.playing:
+                and self.playing and not self.FREE_RUN:
             self._releases()
             self._publish()
             return                  # waiting on the next external pulse
-        if self.playing:
+        active = self.playing or self.FREE_RUN
+        if active:
             self._external_credit = max(0, self._external_credit - 1)
             self.on_tick(self.tick)
         # on_tick may stop the transport (song end). Re-check rather than
         # emitting clock for a tick that no longer exists.
         if self.playing:
             self._clock_tick()
+        if self.playing or self.FREE_RUN:
             self.tick += 1
         self._releases()
         self._publish()
@@ -323,6 +330,15 @@ class RangerEngine:
         due = [key for key, off in self._release.items() if off <= self.tick]
         for key in due:
             endpoint, channel, note = key
+            self.midi.send(endpoint, note_off(channel, note))
+            del self._release[key]
+
+    def release_note(self, channel: int, note: int,
+                     endpoint: str = OUT) -> None:
+        """Release one booked note now — what a thru processor does when the
+        player lifts the key, instead of waiting out the safety length."""
+        key = (endpoint, channel, note)
+        if key in self._release:
             self.midi.send(endpoint, note_off(channel, note))
             del self._release[key]
 
