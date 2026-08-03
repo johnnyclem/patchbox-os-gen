@@ -1,0 +1,51 @@
+# Full config for HyperPixel 4.0" + Pimidi build (literals — not env-dependent).
+# Usage:
+#   ./build-docker.sh -c config.hyperpixel4-pimidi
+# Or: cp config.hyperpixel4-pimidi config  &&  ./build-docker.sh
+
+IMG_NAME="Patchbox"
+FIRST_USER_NAME="patch"
+FIRST_USER_PASS="blokaslabs"
+HOSTNAME="patchbox"
+
+ENABLE_SSH=1
+ENABLE_WIFI_HOTSPOT=0
+ENABLE_VNC=1
+ENABLE_TELEMETRY=1
+ENABLE_FIRST_LOGIN_PASSWORD_CHANGE=1
+
+PISOUND_GIT_REF="patchbox"
+HOTSPOT_PASSPHRASE="blokaslabs"
+
+# Display: HyperPixel only (no forced HDMI bar mode)
+ENABLE_HDMI_ULTRAWIDE=0
+ENABLE_HYPERPIXEL4=1
+ENABLE_WAVESHARE_DPI=0
+HYPERPIXEL_WIDTH=800
+HYPERPIXEL_HEIGHT=480
+HYPERPIXEL_REFRESH=60
+# none = most reliable first bring-up; use left/270 once the panel paints
+HYPERPIXEL_ROTATE=none
+
+# MIDI
+ENABLE_PIMIDI=1
+PIMIDI_SEL=0
+
+# App
+ENABLE_RK00PI=1
+ENABLE_RK00PI_SERVICE=1
+ENABLE_RK00PI_BUTTON=0
+RK00PI_HUB_PRESET=pimidi-2x2
+RK00PI_WIDTH=800
+RK00PI_HEIGHT=480
+
+ENABLE_INKY=0
+ENABLE_INKY_UI=0
+ENABLE_INKY_STATUS_SERVICE=0
+ENABLE_RASPIAUDIO=0
+
+RASPBIAN_MIRROR=http://mirrors.ocf.berkeley.edu/raspbian/raspbian
+
+WPA_COUNTRY=
+WPA_ESSID=
+WPA_PASSWORD=

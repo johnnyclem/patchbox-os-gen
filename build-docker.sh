@@ -38,13 +38,18 @@ do
 	esac
 done
 
-# Ensure that the configuration file is an absolute path
-if test -x /usr/bin/realpath; then
-	CONFIG_FILE=$(realpath -s "$CONFIG_FILE" || realpath "$CONFIG_FILE")
+# Ensure that the configuration file is an absolute path (required for docker
+# bind-mounts — a relative path becomes a named volume and /config is empty).
+if [ -n "${CONFIG_FILE}" ]; then
+	if test -x /usr/bin/realpath; then
+		CONFIG_FILE=$(realpath -s "$CONFIG_FILE" 2>/dev/null || realpath "$CONFIG_FILE")
+	elif [ -f "${CONFIG_FILE}" ]; then
+		CONFIG_FILE="$(cd "$(dirname "${CONFIG_FILE}")" && pwd)/$(basename "${CONFIG_FILE}")"
+	fi
 fi
 
 # Ensure that the confguration file is present
-if test -z "${CONFIG_FILE}"; then
+if test -z "${CONFIG_FILE}" || [ ! -f "${CONFIG_FILE}" ]; then
 	echo "Configuration file need to be present in '${DIR}/config' or path passed as parameter"
 	exit 1
 else
@@ -79,8 +84,14 @@ if [ "${CONTAINER_EXISTS}" != "" ] && [ "${CONTINUE}" != "1" ]; then
 	exit 1
 fi
 
-# Modify original build-options to allow config file to be mounted in the docker container
-BUILD_OPTS="$(echo "${BUILD_OPTS:-}" | sed -E 's@\-c\s?([^ ]+)@-c /config@')"
+# Modify original build-options so the container uses the bind-mounted config.
+# Use POSIX character class (macOS BSD sed has no \s).
+BUILD_OPTS="$(echo "${BUILD_OPTS:-}" | sed -E 's|-c[[:space:]]*[^[:space:]]+|-c /config|')"
+# Always pass -c /config when we have a config file (env-only invocations).
+case " ${BUILD_OPTS} " in
+	*" -c "*|*" -c"*) ;;
+	*) BUILD_OPTS="${BUILD_OPTS} -c /config" ;;
+esac
 
 # Check the arch of the machine we're running on.
 # On x86_64, use a 32-bit (i386) base image so setarch linux32 works for armhf
@@ -187,10 +198,20 @@ time ${DOCKER} run \
   -e "HDMI_WIDTH=${HDMI_WIDTH:-}" \
   -e "HDMI_HEIGHT=${HDMI_HEIGHT:-}" \
   -e "HDMI_REFRESH=${HDMI_REFRESH:-}" \
+  -e "ENABLE_HYPERPIXEL4=${ENABLE_HYPERPIXEL4:-}" \
+  -e "HYPERPIXEL_WIDTH=${HYPERPIXEL_WIDTH:-}" \
+  -e "HYPERPIXEL_HEIGHT=${HYPERPIXEL_HEIGHT:-}" \
+  -e "HYPERPIXEL_REFRESH=${HYPERPIXEL_REFRESH:-}" \
+  -e "HYPERPIXEL_ROTATE=${HYPERPIXEL_ROTATE:-}" \
+  -e "ENABLE_PIMIDI=${ENABLE_PIMIDI:-}" \
+  -e "PIMIDI_SEL=${PIMIDI_SEL:-}" \
   -e "ENABLE_RK00PI=${ENABLE_RK00PI:-}" \
   -e "ENABLE_RK00PI_SERVICE=${ENABLE_RK00PI_SERVICE:-}" \
+  -e "ENABLE_RK00PI_BUTTON=${ENABLE_RK00PI_BUTTON:-}" \
+  -e "RK00PI_HUB_PRESET=${RK00PI_HUB_PRESET:-}" \
   -e "RK00PI_WIDTH=${RK00PI_WIDTH:-}" \
   -e "RK00PI_HEIGHT=${RK00PI_HEIGHT:-}" \
+  -e "ENABLE_WAVESHARE_DPI=${ENABLE_WAVESHARE_DPI:-}" \
   -e "RASPBIAN_MIRROR=${RASPBIAN_MIRROR:-}" \
   $DOCKER_CMDLINE_POST \
   pi-gen \

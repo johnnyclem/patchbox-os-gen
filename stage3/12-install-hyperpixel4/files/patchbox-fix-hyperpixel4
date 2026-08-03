@@ -1,0 +1,76 @@
+#!/bin/bash
+# Field enable HyperPixel 4 rectangular on a running Patchbox image.
+# Usage: sudo patchbox-fix-hyperpixel4
+#        sudo patchbox-fix-hyperpixel4 --rotate 270
+set -euo pipefail
+[ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
+
+ROT="none"
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--rotate) ROT=$2; shift 2 ;;
+		-h|--help) sed -n '2,5p' "$0"; exit 0 ;;
+		*) echo "unknown: $1"; exit 1 ;;
+	esac
+done
+
+CFG=/boot/firmware/config.txt
+CMD=/boot/firmware/cmdline.txt
+[ -f "$CFG" ] || { echo "missing $CFG"; exit 1; }
+
+cp -a "$CFG" "${CFG}.bak.$(date +%Y%m%d%H%M%S)"
+
+# Drop forced HDMI modes + old hyperpixel lines
+TMP=$(mktemp)
+while IFS= read -r line || [ -n "$line" ]; do
+	s="${line#"${line%%[![:space:]]*}"}"
+	case "$s" in
+		dtoverlay=vc4-kms-dpi-hyperpixel4*|hdmi_group=*|hdmi_mode=*|hdmi_cvt=*|hdmi_drive=*|hdmi_force_hotplug=*|hdmi_ignore_edid=*)
+			continue ;;
+		*'--- HyperPixel 4'*|*'--- end HyperPixel 4'*|*'--- HDMI ultrawide'*|*'--- end HDMI ultrawide'*)
+			continue ;;
+	esac
+	printf '%s\n' "$line"
+done < "$CFG" > "$TMP"
+
+grep -qE '^dtoverlay=vc4-kms-v3d' "$TMP" || echo "dtoverlay=vc4-kms-v3d" >> "$TMP"
+grep -qE '^max_framebuffers=' "$TMP" || echo "max_framebuffers=2" >> "$TMP"
+
+OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4"
+case "$ROT" in
+	none|"") OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4" ;;
+	0|normal) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=0" ;;
+	90|right) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=90" ;;
+	180|inverted) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=180" ;;
+	270|left) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270" ;;
+esac
+
+cat >> "$TMP" <<EOF
+
+# --- HyperPixel 4 (field fix) ---
+${OVERLAY}
+# --- end HyperPixel 4 ---
+EOF
+cat "$TMP" > "$CFG"
+rm -f "$TMP"
+
+if [ -f "$CMD" ]; then
+	cp -a "$CMD" "${CMD}.bak.$(date +%Y%m%d%H%M%S)"
+	# strip old video= hints, add DPI
+	sed -E 's/ *video=HDMI-A-[12]:[^ ]*//g; s/ *video=DPI-1:[^ ]*//g' "$CMD" | tr -s ' ' > "${CMD}.1"
+	if ! grep -q 'video=DPI-1:' "${CMD}.1"; then
+		sed 's/^/video=DPI-1:800x480@60D /' "${CMD}.1" | tr -s ' ' | sed 's/ $//' > "$CMD"
+		echo >> "$CMD"
+	else
+		cat "${CMD}.1" > "$CMD"
+	fi
+	rm -f "${CMD}.1"
+fi
+
+echo "Wrote ${OVERLAY}"
+echo "cmdline: $(cat "$CMD" 2>/dev/null)"
+echo "Reboot: sudo reboot"
+echo "If still black: try --rotate none (default) vs --rotate 270; check:"
+echo "  ls /boot/firmware/overlays/vc4-kms-dpi-hyperpixel4.dtbo"
+echo "  dmesg | grep -i dpi"
+exit 0

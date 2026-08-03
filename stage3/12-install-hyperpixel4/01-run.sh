@@ -18,12 +18,14 @@ if [ "${ENABLE_HYPERPIXEL4}" != "1" ]; then
 	exit 0
 fi
 
+# Native panel is 800×480 landscape glass; kernel often presents 480×800 until
+# rotated. Defaults below get a *picture first*; rotate later if needed.
 W="${HYPERPIXEL_WIDTH:-800}"
 H="${HYPERPIXEL_HEIGHT:-480}"
 R="${HYPERPIXEL_REFRESH:-60}"
-# Landscape "left" (HDMI/power toward bottom of a typical mount). Options:
-#   none | left | right | inverted  (kernel DRM rotate / touch matrix)
-ROT="${HYPERPIXEL_ROTATE:-left}"
+# none = stock overlay only (most reliable first bring-up on Pi 5).
+# left|right|inverted|normal → dtoverlay ...,rotate=270|90|180|0 (degrees).
+ROT="${HYPERPIXEL_ROTATE:-none}"
 
 CONFIG_TXT="${ROOTFS_DIR}/boot/firmware/config.txt"
 CMDLINE="${ROOTFS_DIR}/boot/firmware/cmdline.txt"
@@ -49,12 +51,14 @@ while IFS= read -r line || [ -n "${line}" ]; do
 		*'--- HyperPixel 4'*|*'--- end HyperPixel 4'*)
 			continue ;;
 		hdmi_group=*|hdmi_mode=*|hdmi_cvt=*|hdmi_drive=*|hdmi_force_hotplug=*|hdmi_ignore_edid=*)
-			# Drop forced HDMI modes when DPI is primary (HDMI can still work as secondary)
+			# Drop forced HDMI modes when DPI is primary
 			continue ;;
 	esac
 	printf '%s\n' "${line}"
 done < "${CONFIG_TXT}" > "${TMP}"
 
+# KMS on Pi 5: prefer pi5-named overlay when present in firmware later;
+# vc4-kms-v3d is still required as the base.
 if ! grep -qE '^dtoverlay=vc4-kms-v3d' "${TMP}"; then
 	echo "dtoverlay=vc4-kms-v3d" >> "${TMP}"
 fi
@@ -62,23 +66,42 @@ if ! grep -qE '^max_framebuffers=' "${TMP}"; then
 	echo "max_framebuffers=2" >> "${TMP}"
 fi
 
-# Rotation: KMS parameter on the overlay where supported.
-# Rectangular HyperPixel boots portrait-native; "left" is the usual landscape.
+# PSA (pimoroni/hyperpixel4#177): generic i2c_arm / spi enable can DT-conflict
+# with HyperPixel. Pimidi stage may have added a high-rate i2c_arm line —
+# drop *only* that managed baudrate line so HyperPixel can claim the bus for
+# Goodix; Pimidi's own overlay still brings up what it needs.
+TMP2="$(mktemp)"
+while IFS= read -r line || [ -n "${line}" ]; do
+	s="${line#"${line%%[![:space:]]*}"}"
+	case "${s}" in
+		dtparam=i2c_arm=on,i2c_arm_baudrate=*)
+			continue ;;
+	esac
+	printf '%s\n' "${line}"
+done < "${TMP}" > "${TMP2}"
+cat "${TMP2}" > "${TMP}"
+rm -f "${TMP2}"
+
+# Bare overlay is the known-good Pi 5 path. Optional rotate= in *degrees*
+# (270 = landscape "left") — do NOT pass 0..3; that confuses some kernels.
 OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4"
 case "${ROT}" in
-	left|right|inverted|normal|0|90|180|270)
-		# Pass rotate as overlay param when non-default landscape left is wanted.
-		# Kernel docs: rotate=0|1|2|3 (0=normal). Map friendly names.
-		case "${ROT}" in
-			normal|0) ROT_N=0 ;;
-			right|90) ROT_N=1 ;;
-			inverted|180) ROT_N=2 ;;
-			left|270) ROT_N=3 ;;
-			*) ROT_N=3 ;;
-		esac
-		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=${ROT_N}"
-		;;
 	none|"")
+		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4"
+		;;
+	normal|0)
+		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=0"
+		;;
+	right|90)
+		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=90"
+		;;
+	inverted|180)
+		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=180"
+		;;
+	left|270)
+		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270"
+		;;
+	*)
 		OVERLAY_LINE="dtoverlay=vc4-kms-dpi-hyperpixel4"
 		;;
 esac
@@ -86,22 +109,27 @@ esac
 cat >> "${TMP}" <<EOF
 
 # --- HyperPixel 4.0 rectangular (${W}x${H}@${R}) ---
-# Pimoroni DPI panel; in-tree on Bookworm. Touch = Goodix over I2C.
-# https://github.com/pimoroni/hyperpixel4
+# Pimoroni DPI; in-tree on Bookworm/Pi 5. Touch = Goodix I2C.
+# https://github.com/pimoroni/hyperpixel4  (no legacy installer)
+# First bring-up: leave rotate=none if the panel stays black with rotate=*.
 ${OVERLAY_LINE}
 # --- end HyperPixel 4 ---
 EOF
 
 cat "${TMP}" > "${CONFIG_TXT}"
 rm -f "${TMP}"
-echo "  updated ${CONFIG_TXT}"
+echo "  updated ${CONFIG_TXT}: ${OVERLAY_LINE}"
 
-# Kernel mode hint for DPI (kmsdrm / console)
+# Kernel mode: rectangular glass is 800x480; some kernels name the connector
+# DPI-1. Also hint 480x800 (native portrait) so either orientation can attach.
 if [ -f "${CMDLINE}" ]; then
 	TMPC="$(mktemp)"
-	sed -E 's/ *video=HDMI-A-[12]:[^ ]*//g; s/ *video=DPI-1:[^ ]*//g' "${CMDLINE}" > "${TMPC}.1"
-	if ! grep -q "video=DPI-1:${W}x${H}" "${TMPC}.1"; then
-		sed "s/^/video=DPI-1:${W}x${H}@${R}D /" "${TMPC}.1" > "${TMPC}.2"
+	sed -E 's/ *video=HDMI-A-[12]:[^ ]*//g; s/ *video=DPI-1:[^ ]*//g; s/ *video=DSI-1:[^ ]*//g' \
+		"${CMDLINE}" > "${TMPC}.1"
+	# Prefer native-ish modes; do not force HDMI.
+	PREFIX="video=DPI-1:${W}x${H}@${R}D"
+	if ! grep -q "video=DPI-1:" "${TMPC}.1"; then
+		sed "s/^/${PREFIX} /" "${TMPC}.1" > "${TMPC}.2"
 	else
 		cp "${TMPC}.1" "${TMPC}.2"
 	fi
@@ -148,6 +176,9 @@ EOF
 
 install -m 755 files/patchbox-hyperpixel-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-hyperpixel-status"
+install -d "${ROOTFS_DIR}/usr/local/sbin"
+install -m 755 files/patchbox-fix-hyperpixel4 \
+	"${ROOTFS_DIR}/usr/local/sbin/patchbox-fix-hyperpixel4"
 
 # LightDM stay-awake (if desktop is used)
 LIGHTDM="${ROOTFS_DIR}/etc/lightdm/lightdm.conf"
