@@ -73,7 +73,7 @@ RANGER_BOOT_APP="${RANGER_BOOT_APP:-rk00pi}"
 # Per-app install toggles. Off until each app ships (its stage flips the
 # default to 1 in the PR that lands it): six qemu venv builds and ~100 MB per
 # app of venv on SDHC are not free.
-ENABLE_MIDIRANGER="${ENABLE_MIDIRANGER:-0}"
+ENABLE_MIDIRANGER="${ENABLE_MIDIRANGER:-1}"
 ENABLE_GENRANGER="${ENABLE_GENRANGER:-0}"
 ENABLE_PHRASERANGER="${ENABLE_PHRASERANGER:-0}"
 ENABLE_SCENERANGER="${ENABLE_SCENERANGER:-0}"

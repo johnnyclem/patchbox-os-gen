@@ -1,0 +1,10 @@
+# MidiRanger runtime dependencies (floors, not pins — see requirements.lock
+# for what the image actually installs).
+#
+# The engine core needs none of these: the matrix, arps, quantizer,
+# harmonizer, note FX, LFOs and the engine itself are stdlib only (plus the
+# vendored rangerkit), which is what lets CI run the whole processing model
+# on a box with no audio, no MIDI and no display.
+pygame>=2.5          # the panel (SDL2 KMS/DRM kiosk)
+mido>=1.3            # MIDI message model
+python-rtmidi>=1.5   # mido's ALSA sequencer backend

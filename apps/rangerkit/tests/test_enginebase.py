@@ -227,3 +227,33 @@ def test_engine_survives_a_tick_that_raises():
     except RuntimeError:
         engine.all_notes_off()
     assert not midi.hanging()
+
+
+def test_free_run_engine_ticks_while_stopped():
+    class FreeBeep(BeepEngine):
+        FREE_RUN = True
+
+    engine, midi = rig(FreeBeep)
+    run_ticks(engine, TICKS_PER_BAR)        # never played
+    assert len(midi.notes_on()) == 1        # bar-top beep fired anyway
+    assert engine.tick == TICKS_PER_BAR
+    assert not engine.playing
+    assert not midi.realtime                # no clock while stopped
+    assert not midi.hanging()
+
+
+def test_release_note_frees_one_booking():
+    class Holder(RangerEngine):
+        def on_tick(self, tick):
+            if tick == 0:
+                self.send_note(0, 60, 100, TICKS_PER_BAR * 16)
+                self.send_note(0, 64, 100, TICKS_PER_BAR * 16)
+
+    engine, midi = rig(Holder)
+    engine.submit(eb.Play())
+    run_ticks(engine, 2)
+    engine.release_note(0, 60)
+    engine.release_note(0, 60)              # double release is a no-op
+    assert midi.hanging() == {(0, 64)}
+    engine.all_notes_off()
+    assert not midi.hanging()

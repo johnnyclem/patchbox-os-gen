@@ -49,9 +49,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Apps join this list in the PR that lands them (Phase 1: midiranger,
-        # and so on down the build order).
-        app: [rangerkit]
+        # Apps join this list in the PR that lands them, in build order.
+        app: [rangerkit, midiranger]
         # 3.11 is what Bookworm ships and therefore what the appliance runs;
         # 3.12 is the canary for the next Raspberry Pi OS base.
         python-version: ['3.11', '3.12']
