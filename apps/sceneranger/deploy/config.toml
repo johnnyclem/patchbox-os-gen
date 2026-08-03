@@ -1,0 +1,78 @@
+# SceneRanger appliance configuration — /etc/sceneranger/config.toml
+#
+# Deployment state only. Everything musical (the grid, clips, chains)
+# lives in the project file under [paths] data_dir, so this file can be
+# copied between units without dragging somebody's piece along with it.
+#
+# The install stage rewrites width/height and the paths for the panel it is
+# building for; the rest is yours to edit. Restart after changing anything
+# here:  sudo systemctl restart sceneranger
+
+[display]
+# The reference panel is the 1280x400 HDMI bar. The GUI derives its whole
+# layout from these two numbers — a portrait 480x800 gets stacked chrome
+# instead of side rails, with nothing else to configure.
+width = 1280
+height = 400
+fullscreen = true
+# industrial (light, tuned for the washed-out bar LCD) | mono | dusk
+theme = "industrial"
+fps = 60
+
+[paths]
+# Must be writable by the service user. The install stage creates these.
+data_dir = "/var/lib/sceneranger"
+presets_dir = "/var/lib/sceneranger/presets"
+
+[midi]
+# auto tries mido/python-rtmidi (the ALSA sequencer) and degrades to a silent
+# null backend rather than refusing to boot. The SET screen says which one is
+# in force and what each track's destination is bound to.
+backend = "auto"
+# Sending MIDI clock (24 ppq) with the transport. Off by default: a box that
+# starts clocking the moment it boots will surprise whatever is downstream.
+clock_out = false
+
+[clock]
+# internal | midi — "midi" follows incoming 0xF8 on the bound inputs.
+source = "internal"
+pll_smooth = 0.2
+dropout_ms = 1000.0
+
+[engine]
+# SCHED_FIFO priority for the tick thread. The unit grants the capability;
+# 0 leaves scheduling alone (which is right on a dev box and wrong on stage).
+rt_priority = 40
+
+[button]
+# The PiSound button, bridged over a Unix socket because pisound-btn runs its
+# scripts as root under the system Python and the app runs as its own user
+# inside a venv. /run/sceneranger is created by the unit's RuntimeDirectory=.
+enabled = true
+socket = "/run/sceneranger/button.sock"
+
+[button.map]
+# Gesture -> action. Actions: play_stop, scene_fire, record_arm, stop_all,
+# save_project, panic, nothing. An unknown name is dropped with a log line,
+# not a crash.
+CLICK_1 = "play_stop"
+CLICK_2 = "scene_fire"
+CLICK_3 = "stop_all"
+HOLD_1S = "save_project"
+HOLD_5S = "panic"
+
+[pots]
+# Where the two panel pots come from: "midi_cc" (a pot box speaking MIDI —
+# use LEARN on the SET screen), "socket" (/run/sceneranger/pots.sock, for a
+# future ADC daemon), or "none".
+source = "midi_cc"
+cc_a = 20
+cc_b = 21
+# -1 = any channel
+channel = -1
+
+[pots.map]
+# What each pot turns: quantize (sweeps off -> beat -> bar), intensity
+# (global scene velocity), nothing.
+POT_A = "quantize"
+POT_B = "intensity"
