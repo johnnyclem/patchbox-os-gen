@@ -10,3 +10,8 @@ apt-cacher-ng/
 # Local secrets (WiFi SSID/password) — never commit
 config.local
 config.local
+
+# Python bytecode from running the stage tests in place
+__pycache__/
+*.pyc
+.pytest_cache/

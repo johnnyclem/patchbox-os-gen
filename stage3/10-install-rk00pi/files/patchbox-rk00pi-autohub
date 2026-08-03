@@ -1,0 +1,523 @@
+#!/usr/bin/env python3
+"""Point RK-00pi's hub at the MIDI hardware this unit actually has.
+
+The problem this exists to solve: the image bakes one hub preset at build
+time (``RK00PI_HUB_PRESET``, historically always ``pimidi-2x2``), and a hub
+endpoint binds to an ALSA port by *name*. Boot that image on a rig whose HAT
+is a Pisound rather than a Pimidi and every DIN endpoint asks for a client
+called "pimidi" that is not there. Nothing binds. The panel shows the device
+names on the diagnostics screen — the scan is fine — but no note and no clock
+moves in either direction, and nothing on screen says why.
+
+So: read the live sequencer graph, build the hub the graph implies, and write
+it into the project the kiosk is about to load. Run from ``rk00pi.service``
+as ``ExecStartPre``, before the app opens its own sequencer clients.
+
+Deliberately stdlib-only and run outside the app venv: this has to work on a
+unit where the venv is half-built or the app crashes at start, which is
+exactly when someone needs it.
+
+Modes
+  --check    (default) print the graph, the project's endpoints, and which of
+             them resolve. Read-only, always exits 0 — it is a diagnostic.
+  --apply    rewrite the project's hub, but only when doing so binds strictly
+             more endpoints than the hub already there (see fits()).
+  --print    write the generated hub to stdout as .rkhub JSON.
+
+Opting out on the unit: ``touch /etc/rk00pi/autohub.disabled``.
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import re
+import subprocess
+import sys
+from dataclasses import dataclass
+from pathlib import Path
+
+PROC_CLIENTS = Path("/proc/asound/seq/clients")
+DEFAULT_PROJECT = Path("/var/lib/rk00pi/projects/starter.rkproj")
+DEFAULT_PRESET = Path("/var/lib/rk00pi/presets/auto.rkhub")
+DISABLE_FLAG = Path("/etc/rk00pi/autohub.disabled")
+
+# .rkhub schema floor. The app's loader is tolerant (missing keys take
+# dataclass defaults) and refuses anything *newer* than it knows, so the
+# shipped presets all declare 1 and so do we — a hub written by this tool
+# must load on an older app than the one that generated it.
+HUB_SCHEMA = 1
+
+# Device families, spelled as core/audio_io.py spells them.
+PISOUND, PIMIDI, USB, SOFT = "pisound", "pimidi", "usb", "soft"
+
+# Clients that are never something anyone plugged in. "pisound-ctl" is the
+# Pisound's control/button port, not a MIDI jack — routing to it does nothing
+# and it would otherwise win the substring match against "pisound".
+_SOFT_CLIENTS = ("system", "midi through", "rk-00pi", "rk00pi", "timer",
+                 "announce", "pisound-ctl")
+
+# "  Port   0 : "pisound MIDI PS-1YJZ1HQ" (RWeX)" — the caps field is
+# (read, write, exclusive, duplex); upper/lower differ only in whether the
+# port takes subscriptions, and both mean the direction exists.
+_PROC_CLIENT = re.compile(r'^Client\s+(\d+)\s*:\s*"(.*)"')
+_PROC_PORT = re.compile(r'^\s+Port\s+(\d+)\s*:\s*"(.*)"\s*\(([^)]*)\)')
+# "client 20: 'pisound' [type=kernel,card=1]" / "    0 'pisound MIDI  '"
+_ACONNECT_CLIENT = re.compile(r"^client\s+(\d+):\s*'(.*?)'")
+_ACONNECT_PORT = re.compile(r"^\s+(\d+)\s+'(.*?)'\s*$")
+
+
+@dataclass(frozen=True)
+class Port:
+    """One direction of one ALSA sequencer port."""
+
+    client_name: str
+    port_name: str
+    is_input: bool          # True = we can read from it (a MIDI source)
+
+    @property
+    def kind(self) -> str:
+        return classify(self.client_name)
+
+    def __str__(self) -> str:
+        return f"{'in ' if self.is_input else 'out'} {self.client_name}:" \
+               f"{self.port_name}"
+
+
+def classify(client_name: str) -> str:
+    """Which family a sequencer client belongs to. Substring matching on
+    purpose: ALSA reports "pisound", "pisound-ctl" and "Blokas pisound" for
+    one HAT depending on where you read it, and the Pimidi client is
+    "pimidi0" with a board-select suffix."""
+    lowered = client_name.lower()
+    for name in _SOFT_CLIENTS:
+        if name in lowered:
+            return SOFT
+    if "pimidi" in lowered:
+        return PIMIDI
+    if "pisound" in lowered:
+        return PISOUND
+    return USB          # anything else is a device someone plugged in
+
+
+# --- reading the graph --------------------------------------------------------
+
+def parse_proc_clients(text: str) -> list[Port]:
+    """Parse /proc/asound/seq/clients. Preferred over aconnect because it
+    needs no alsa-utils and no /dev/snd/seq handle of our own — opening a
+    sequencer client here would show up in the app's own scan."""
+    ports: list[Port] = []
+    client = ""
+    for line in text.splitlines():
+        match = _PROC_CLIENT.match(line)
+        if match:
+            client = match.group(2).strip()
+            continue
+        match = _PROC_PORT.match(line)
+        if not match or not client:
+            continue
+        name, caps = match.group(2).strip(), match.group(3)
+        if len(caps) >= 2:
+            if caps[0] in "Rr":
+                ports.append(Port(client, name, True))
+            if caps[1] in "Ww":
+                ports.append(Port(client, name, False))
+    return ports
+
+
+def parse_aconnect(text: str, is_input: bool) -> list[Port]:
+    """Parse one direction of ``aconnect -i`` / ``aconnect -o``. The fallback
+    for a kernel whose /proc format we do not recognise."""
+    ports: list[Port] = []
+    client = ""
+    for line in text.splitlines():
+        match = _ACONNECT_CLIENT.match(line)
+        if match:
+            client = match.group(2).strip()
+            continue
+        match = _ACONNECT_PORT.match(line)
+        if match and client:
+            ports.append(Port(client, match.group(2).strip(), is_input))
+    return ports
+
+
+def read_graph() -> list[Port]:
+    """Every hardware-ish port the sequencer currently has, both directions."""
+    try:
+        ports = parse_proc_clients(PROC_CLIENTS.read_text(encoding="utf-8"))
+    except OSError:
+        ports = []
+    if ports:
+        return ports
+    for flag, is_input in (("-i", True), ("-o", False)):
+        try:
+            out = subprocess.run(["aconnect", flag, "-l"], check=False,
+                                 capture_output=True, text=True, timeout=10)
+        except (OSError, subprocess.SubprocessError):
+            continue
+        ports.extend(parse_aconnect(out.stdout, is_input))
+    return ports
+
+
+# --- matching (mirrors core/midi_io.match_endpoint) ---------------------------
+
+_IN_KINDS = ("din_in", "usb_in")
+_OUT_KINDS = ("din_out", "usb_out")
+
+
+def match_endpoint(endpoint: dict, ports: list[Port]) -> Port | None:
+    """First port an endpoint's name substrings match, case-insensitively.
+
+    This must agree with core/midi_io.py's match_endpoint — it is the whole
+    basis for "will this endpoint bind". Kept as a small copy rather than an
+    import because the app tree may not be importable when this runs.
+    """
+    kind = endpoint.get("kind", "")
+    if kind in _IN_KINDS:
+        want_input = True
+    elif kind in _OUT_KINDS:
+        want_input = False
+    else:
+        return None                     # seq/rec/metro/gate are not ALSA
+    client = (endpoint.get("client_name") or "").lower()
+    port_name = (endpoint.get("port_name") or "").lower()
+    if not client and not port_name:
+        return None
+    for p in ports:
+        if p.is_input is not want_input:
+            continue
+        if client and client not in p.client_name.lower():
+            continue
+        if port_name and port_name not in p.port_name.lower():
+            continue
+        return p
+    return None
+
+
+def fits(hub: dict, ports: list[Port]) -> tuple[int, int]:
+    """(endpoints that resolve, endpoints that want a port) for a hub."""
+    resolved = wanted = 0
+    for endpoint in hub.get("endpoints", ()):
+        if endpoint.get("kind", "") not in _IN_KINDS + _OUT_KINDS:
+            continue
+        wanted += 1
+        if match_endpoint(endpoint, ports) is not None:
+            resolved += 1
+    return resolved, wanted
+
+
+# --- building a hub from the graph -------------------------------------------
+
+@dataclass(frozen=True)
+class Jack:
+    """A physical socket: one sequencer port, both directions folded in."""
+
+    client_name: str
+    port_name: str
+    has_in: bool
+    has_out: bool
+
+
+def _devices(ports: list[Port]) -> dict[str, list[Jack]]:
+    """Hardware jacks by family, deduped and in a stable order.
+
+    Direction is kept rather than assumed: a class-compliant controller that
+    only sends (no port to write to) gets a ``usb_in`` endpoint and no
+    ``usb_out``, so a generated hub never carries an endpoint that cannot
+    bind on the very rig it was generated from.
+    """
+    found: dict[str, dict[tuple[str, str], set[bool]]] = {
+        PIMIDI: {}, PISOUND: {}, USB: {}}
+    for p in ports:
+        if p.kind == SOFT:
+            continue
+        found.setdefault(p.kind, {}).setdefault(
+            (p.client_name, p.port_name), set()).add(p.is_input)
+    return {
+        kind: [Jack(client, port, True in directions, False in directions)
+               for (client, port), directions in sorted(pairs.items())]
+        for kind, pairs in found.items()
+    }
+
+
+def _match_strings(kind: str, client: str, port: str) -> tuple[str, str]:
+    """The (client_name, port_name) an endpoint should carry for a jack.
+
+    Loose enough to survive a replug or a different unit of the same board,
+    tight enough not to grab the wrong port:
+
+    * Pimidi — client "pimidi" (the real one is "pimidi0" + board select),
+      port exact ("pimidi-a"/"pimidi-b") because the two jacks must not swap.
+    * Pisound — the DIN port carries the board's serial ("pisound MIDI
+      PS-1YJZ1HQ"), so match the stable prefix. That also excludes the
+      "pisound-ctl" client, which "pisound" alone would happily match.
+    * Anything else — exact, which is what a USB device's name already is.
+    """
+    if kind == PIMIDI:
+        return PIMIDI, port
+    if kind == PISOUND and port.lower().startswith("pisound midi"):
+        return PISOUND, "pisound MIDI"
+    return client, port
+
+
+def build_hub(ports: list[Port]) -> dict:
+    """The hub this rig implies.
+
+    Shape follows the shipped presets: a bus per physical output carrying
+    clock, one REC bus feeding the sequencer's record input, and every input
+    soft-thru'd to an output plus REC. Bus 0 is always the primary output
+    because ``Track.output_bus`` defaults to 0 — a track in a project written
+    against another hub still lands somewhere audible.
+
+    USB inputs route to bus 0 rather than back out the device they came from:
+    thru'ing a controller to itself is an echo, and the thing a player wants
+    is the keyboard reaching the synth on the DIN out.
+    """
+    devices = _devices(ports)
+    endpoints: list[dict] = []
+    buses: list[dict] = []
+    routes: list[dict] = []
+    # (input endpoint id, output bus id or None) — filled as jacks are added,
+    # drained into routes once the REC bus exists.
+    sources: list[tuple[str, int | None]] = []
+
+    def add_endpoint(endpoint_id: str, kind: str, client: str = "",
+                     port: str = "") -> None:
+        endpoints.append({"id": endpoint_id, "kind": kind,
+                          "client_name": client, "port_name": port})
+
+    def add_bus(name: str, dest: str, clock: str = "THRU") -> int:
+        bus_id = len(buses)
+        buses.append({"id": bus_id, "name": name, "dest_endpoint": dest,
+                      "clock_policy": clock})
+        return bus_id
+
+    def add_jack(family: str, jack: Jack, in_id: str, out_id: str,
+                 bus_name: str) -> int | None:
+        client, port = _match_strings(family, jack.client_name, jack.port_name)
+        bus = None
+        if jack.has_out:
+            add_endpoint(out_id, "usb_out" if family == USB else "din_out",
+                         client, port)
+            bus = add_bus(bus_name, out_id)
+        if jack.has_in:
+            add_endpoint(in_id, "usb_in" if family == USB else "din_in",
+                         client, port)
+        return bus
+
+    # --- DIN jacks: Pimidi's two TRS pairs, else the Pisound's one ------------
+    if devices.get(PIMIDI):
+        for index, jack in enumerate(devices[PIMIDI]):
+            suffix = chr(ord("a") + index)          # din_in_a, din_in_b, …
+            bus = add_jack(PIMIDI, jack, f"din_in_{suffix}",
+                           f"din_out_{suffix}", f"OUT {suffix.upper()}")
+            if jack.has_in:
+                sources.append((f"din_in_{suffix}", bus))
+    elif devices.get(PISOUND):
+        jack = devices[PISOUND][0]
+        bus = add_jack(PISOUND, jack, "din_in", "din_out", "MAIN")
+        if jack.has_in:
+            sources.append(("din_in", bus))
+
+    # --- USB devices ----------------------------------------------------------
+    for index, jack in enumerate(devices.get(USB, ())):
+        suffix = "" if index == 0 else f"_{index + 1}"
+        in_id, out_id = f"usb_in{suffix}", f"usb_out{suffix}"
+        add_jack(USB, jack, in_id, out_id,
+                 "USB" if not index else f"USB {index + 1}")
+        if not jack.has_in:
+            continue
+        # A rig with a DIN out sends the controller there — that is where the
+        # synth is. A USB-only rig has nowhere else to send it, and its own
+        # output would echo the keyboard back at itself, so REC alone.
+        main = buses[0] if buses else None
+        sources.append((in_id, 0 if main is not None
+                        and main["dest_endpoint"] != out_id else None))
+
+    add_endpoint("seq", "seq")
+    add_endpoint("rec", "rec")
+    rec_bus = add_bus("REC", "rec", clock="OFF")
+
+    for source, bus in sources:
+        if bus is not None:
+            routes.append({"source_endpoint": source, "bus_id": bus})
+        routes.append({"source_endpoint": source, "bus_id": rec_bus})
+    if len(buses) > 1:                  # something other than REC to send to
+        routes.append({"source_endpoint": "seq", "bus_id": 0})
+
+    families = ", ".join(f"{kind}×{len(devices[kind])}"
+                         for kind in (PIMIDI, PISOUND, USB)
+                         if devices.get(kind)) or "no MIDI hardware"
+    return {
+        "schema_version": HUB_SCHEMA,
+        "profile": "custom",
+        "comment": "Generated by patchbox-rk00pi-autohub from the live ALSA "
+                   f"graph ({families}). Regenerated on each boot when the "
+                   "project's hub does not fit the rig; edit it on the unit "
+                   "under Hub and it will be left alone.",
+        "endpoints": endpoints,
+        "buses": buses,
+        "routes": routes,
+    }
+
+
+# --- applying it to a project -------------------------------------------------
+
+def should_apply(current: dict, generated: dict,
+                 ports: list[Port]) -> tuple[bool, str]:
+    """Whether to overwrite the project's hub, and why (for the journal).
+
+    The rule is deliberately conservative: a hub is only replaced when the
+    generated one binds *strictly more* endpoints. A rig where everything
+    already resolves is left alone, and so is a rig with no MIDI hardware at
+    all — on a silent unit the user's own routing is worth more than a hub
+    generated from an empty graph.
+    """
+    have, want = fits(current, ports)
+    new_have, new_want = fits(generated, ports)
+    if want and have == want:
+        return False, f"hub already fits ({have}/{want} endpoints bound)"
+    if new_have <= have:
+        return False, (f"generated hub is no better ({new_have}/{new_want} vs "
+                       f"{have}/{want}) — leaving the project alone")
+    return True, (f"{have}/{want} endpoints resolve against this rig; "
+                  f"generated hub resolves {new_have}/{new_want}")
+
+
+def _write_json(path: Path, payload: dict, model: Path | None = None) -> None:
+    """Atomic write that keeps the file's owner. The service user is rk00pi
+    and this runs as root: a fresh root-owned project would load fine and
+    then fail on the first save, which is a worse bug than the one we came to
+    fix."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".autohub.tmp")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    reference = model if model is not None and model.exists() else \
+        (path if path.exists() else path.parent)
+    try:
+        stat = reference.stat()
+        os.chown(tmp, stat.st_uid, stat.st_gid)
+        if reference.is_file():
+            os.chmod(tmp, stat.st_mode & 0o777)
+    except (OSError, AttributeError):
+        pass                            # not root, or a filesystem without it
+    os.replace(tmp, path)
+
+
+def apply_to_project(path: Path, generated: dict, ports: list[Port],
+                     force: bool = False, dry_run: bool = False) -> bool:
+    """Swap the project's hub for the generated one when it is an
+    improvement. Returns whether the file changed."""
+    project = json.loads(path.read_text(encoding="utf-8"))
+    current = project.get("hub") or {}
+    if force:
+        change, why = True, "forced"
+    else:
+        change, why = should_apply(current, generated, ports)
+    print(f"  {'rewriting' if change else 'keeping'} {path}: {why}")
+    if not change or dry_run:
+        return False
+    backup = path.with_suffix(path.suffix + ".autohub.bak")
+    if not backup.exists():
+        _write_json(backup, project, model=path)
+        print(f"  saved the previous hub alongside it: {backup}")
+    hub = dict(generated)
+    hub.pop("schema_version", None)     # the project carries its own
+    project["hub"] = hub
+    _write_json(path, project, model=path)
+    return True
+
+
+# --- reporting ----------------------------------------------------------------
+
+def report(ports: list[Port], project: Path) -> None:
+    """What the diagnostics screen shows, from a shell — the ALSA graph next
+    to the project's endpoints, and which of them resolve."""
+    print("=== ALSA sequencer ports ===")
+    if not ports:
+        print("  (none — is snd-seq loaded? lsmod | grep snd_seq)")
+    for p in sorted(ports, key=lambda p: (not p.is_input, p.client_name)):
+        note = "" if p.kind != SOFT else "   (not a device)"
+        print(f"  {p}{note}")
+    print()
+    print(f"=== hub endpoints ({project}) ===")
+    try:
+        hub = (json.loads(project.read_text(encoding="utf-8")).get("hub")
+               or {})
+    except (OSError, ValueError) as exc:
+        print(f"  cannot read the project: {exc}")
+        return
+    for endpoint in hub.get("endpoints", ()):
+        kind = endpoint.get("kind", "")
+        want = f"{endpoint.get('client_name', '')} " \
+               f"{endpoint.get('port_name', '')}".strip()
+        if kind not in _IN_KINDS + _OUT_KINDS:
+            print(f"  --  {endpoint.get('id', '?'):<12} {kind} (internal)")
+            continue
+        port = match_endpoint(endpoint, ports)
+        mark = "ok " if port is not None else "!! "
+        detail = str(port) if port is not None else \
+            f"wants {want!r} — no such port"
+        print(f"  {mark} {endpoint.get('id', '?'):<12} {kind:<8} {detail}")
+    have, want_count = fits(hub, ports)
+    print(f"\n  {have}/{want_count} endpoints resolve on this rig")
+    if have < want_count:
+        print("  fix: sudo patchbox-rk00pi-autohub --apply && "
+              "sudo systemctl restart rk00pi")
+        print("  or on the panel: Set -> I/O -> MIDI -> DIN")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Fit RK-00pi's MIDI hub to the hardware this unit has.")
+    parser.add_argument("--project", type=Path, default=DEFAULT_PROJECT,
+                        help=f"project to inspect/patch (default {DEFAULT_PROJECT})")
+    parser.add_argument("--preset", type=Path, default=DEFAULT_PRESET,
+                        help="where to save the generated hub as a .rkhub")
+    parser.add_argument("--apply", action="store_true",
+                        help="rewrite the project's hub when it does not fit")
+    parser.add_argument("--print", dest="print_hub", action="store_true",
+                        help="print the generated hub and exit")
+    parser.add_argument("--force", action="store_true",
+                        help="rewrite even when the current hub already fits")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="say what --apply would do, change nothing")
+    args = parser.parse_args(argv)
+
+    ports = read_graph()
+    if args.print_hub:
+        json.dump(build_hub(ports), sys.stdout, indent=2)
+        sys.stdout.write("\n")
+        return 0
+    if not args.apply:
+        report(ports, args.project)
+        return 0
+
+    # --apply runs unattended from the unit file, so every exit is 0 and the
+    # reason goes to the journal: a hub that could not be fixed must not be
+    # the thing that stops the instrument from booting.
+    if DISABLE_FLAG.exists():
+        print(f"autohub: {DISABLE_FLAG} present — leaving the hub alone")
+        return 0
+    if not args.project.is_file():
+        print(f"autohub: no project at {args.project} — nothing to do")
+        return 0
+    generated = build_hub(ports)
+    resolved, _ = fits(generated, ports)
+    print(f"autohub: {len(ports)} sequencer ports, "
+          f"{resolved} bindable endpoint(s) detected")
+    try:
+        if not args.dry_run:
+            _write_json(args.preset, generated)
+        changed = apply_to_project(args.project, generated, ports,
+                                   force=args.force, dry_run=args.dry_run)
+    except (OSError, ValueError) as exc:
+        print(f"autohub: {exc.__class__.__name__}: {exc} — hub left as it was")
+        return 0
+    if changed:
+        print("autohub: hub rewritten; the port scanner binds it at start")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

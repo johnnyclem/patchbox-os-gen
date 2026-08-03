@@ -482,6 +482,15 @@ Build an image that boots ChordRanger instead with
 | RaspiAudio I2S | Off |
 | Pimidi | Ordered / optional later if pins free |
 
+RK-00pi's hub endpoints bind to ALSA ports by **name**, which is what makes
+hotplug work and what makes a mismatched image go silent: build for one HAT,
+boot on a rig with the other, and every DIN endpoint asks for a client that
+is not there. Everything still enumerates — the DIAGNOSTICS screen lists the
+devices — and no note or clock moves. `rk00pi.service` therefore re-fits the
+hub to the live graph before each start, USB MIDI devices included. Check it
+on the unit with `patchbox-rk00pi-autohub` (read-only) and repair with
+`sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi`.
+
 ### Build toggles (display + main app)
 
 | Variable | Default | Meaning |
@@ -489,6 +498,8 @@ Build an image that boots ChordRanger instead with
 | `ENABLE_RK00PI` | `1` | Install RK-00pi from submodule |
 | `ENABLE_RK00PI_SERVICE` | `1` | Enable kiosk unit at boot |
 | `ENABLE_RK00PI_BUTTON` | `1` | Wire PiSound Button → RK-00pi gestures |
+| `ENABLE_RK00PI_AUTOHUB` | `1` | Fit the MIDI hub to the live ALSA graph at every start |
+| `RK00PI_HUB_PRESET` | follows `ENABLE_PIMIDI` | Starter hub: `pimidi-2x2`, else `rk008` (Pisound DIN) |
 | `ENABLE_CHORDRANGER` | `1` | Install ChordRanger from `apps/chordranger` |
 | `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi |
 | `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch |

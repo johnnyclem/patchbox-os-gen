@@ -62,6 +62,8 @@ Shipped default map: `CLICK_1=play_stop`, `CLICK_2=record_toggle`, `HOLD_1S=save
 | `ENABLE_RK00PI` | **1** | Install main app from submodule |
 | `ENABLE_RK00PI_SERVICE` | **1** | `systemctl enable rk00pi` |
 | `ENABLE_RK00PI_BUTTON` | **1** | Wire pisound-btn → RK-00pi socket |
+| `ENABLE_RK00PI_AUTOHUB` | **1** | Re-fit the hub to the live ALSA graph at every start |
+| `RK00PI_HUB_PRESET` | follows `ENABLE_PIMIDI` | `pimidi-2x2` on a Pimidi rig, else `rk008` (Pisound DIN) |
 | `RK00PI_WIDTH` / `HEIGHT` | (HDMI dims) | `/etc/rk00pi/config.toml` panel size |
 | `ENABLE_HDMI_ULTRAWIDE` | **1** | Custom HDMI mode **1280×400@60** |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Override if panel differs |
@@ -100,8 +102,46 @@ kmsdrm fails with `pygame.error: kmsdrm not available`.
 | `/etc/rk00pi/config.toml` | Panel size + engine/MIDI/gates + `[button.map]` |
 | `/run/rk00pi/button.sock` | The Button control socket (tmpfs, per boot) |
 | `/usr/local/bin/rk00pi-btn` | stdlib client called by pisound-btn scripts |
+| `/usr/local/sbin/patchbox-rk00pi-autohub` | Fits the hub to this unit's MIDI hardware (`ExecStartPre`) |
+| `/etc/rk00pi/autohub.disabled` | Touch it to stop autohub touching the hub |
 | `/etc/pisound.conf` | PiSound gesture → `rk00pi_{click,hold}.sh` (`.rk00pi.bak` backup) |
 | `rk00pi.service` | Kiosk unit (`SDL_VIDEODRIVER=kmsdrm`, `RuntimeDirectory=rk00pi`) |
+
+### MIDI binds by name, so the hub has to match the HAT
+
+A hub endpoint does not hold an ALSA client number — it holds a *name*, and
+the port scanner binds whatever currently matches it. That is what makes
+hotplug work, and it is also the whole failure mode: an image built for one
+HAT boots on a rig carrying another, every DIN endpoint asks for a client
+that is not there, and nothing binds. The devices still enumerate, so the
+DIAGNOSTICS screen lists them all and the endpoint circles stay hollow — no
+note, no clock, either direction.
+
+Three things now guard against it:
+
+* `RK00PI_HUB_PRESET` follows `ENABLE_PIMIDI` instead of always baking
+  `pimidi-2x2`
+* `rk00pi.service` runs `patchbox-rk00pi-autohub --apply` before the app
+  starts: it reads `/proc/asound/seq/clients`, builds the hub that graph
+  implies (Pimidi's two TRS pairs, or the Pisound's DIN, plus any USB device
+  — which the baked presets never covered) and writes it into the starter
+  project. It only rewrites when the generated hub binds **strictly more**
+  endpoints than the one already there, so a hub built by hand on the unit
+  survives. The previous one is kept at `<project>.autohub.bak` and the
+  generated one lands in `/var/lib/rk00pi/presets/auto.rkhub`
+* `patchbox-rk00pi-status` prints which endpoints resolve and which do not
+
+On the unit, read-only: `patchbox-rk00pi-autohub`. To fix by hand:
+`sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi`, or
+**Set → I/O → MIDI → DIN** on the panel.
+
+Known app-side gap (RK-00pi submodule, not fixed here): `[midi] din_client`
+in `/etc/rk00pi/config.toml` re-points DIN endpoints via
+`core/prefs.py:retarget_din`, which changes `client_name` and leaves
+`port_name` alone. Against a preset that pins a port name (`pimidi-2x2` pins
+`pimidi-a`/`pimidi-b`) the endpoint still cannot match, so that knob does not
+rescue a Pisound rig. The panel's Set → I/O → MIDI path clears `port_name`
+and does work.
 
 ### The Button — default gestures
 
@@ -335,6 +375,8 @@ Optional desktop: `sudo systemctl stop rk00pi && sudo systemctl start lightdm`
 | probe sees **no** events | USB unplugged, bad port, or dead controller | Plug ElecLab USB; try USB2 port; `lsusb` + `/proc/bus/input/devices` |
 | probe sees events, UI still dead | old app (no FINGER→mouse) or wrong SDL env | scp updated `gui/app.py` + re-run fix script; or re-flash |
 | MIDI IN LEDs flash, **din_in unbound / no notes** | Patchbox **amidiauto** `*→*` races binds (EBUSY) | `sudo systemctl disable --now amidiauto`; restart rk00pi (fixed in `midi_alsa.py` too) |
+| **DIAGNOSTICS lists every device, no notes or clock either way** | Hub endpoints name a HAT this Pi does not have (image built for Pimidi, rig is Pisound) — endpoint circles hollow | `patchbox-rk00pi-autohub` to confirm, then `sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi`; panel equivalent is Set → I/O → MIDI → DIN |
+| **USB controller listed, plays nothing** | Baked hub presets declare DIN endpoints only — no `usb_in`/`usb_out` to route | same `--apply`: the generated hub gives each USB device an endpoint and routes it to the main out + REC |
 | **The Button** does nothing | `pisound-btn` inactive, conf not mapped, or no socket | same one-shot; then `rk00pi-btn PING` |
 | Button LEDs flash long, no transport | Socket missing (rk00pi down) | `systemctl status rk00pi`; journal for “button listening” |
 | No `/sys/kernel/pisound` | HAT/driver not loaded | Reseat HAT; `lsmod \| grep pisound`; Pisound package/overlay |
@@ -396,6 +438,8 @@ apps/chordranger/                 # second app (in-repo, not a submodule)
 stage3/02-install-pisound/
 stage3/09-hdmi-ultrawide/
 stage3/10-install-rk00pi/         # bake app into image
+stage3/10-install-rk00pi/files/patchbox-rk00pi-autohub   # fit hub to the rig
+stage3/10-install-rk00pi/tests/   # pytest for the above (CI: rk00pi-stage)
 stage3/13-install-chordranger/    # bake ChordRanger into image
 HANDOFF.md
 deploy/image_*.zip                # after successful build
