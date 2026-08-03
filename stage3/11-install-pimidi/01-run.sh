@@ -19,28 +19,35 @@ fi
 
 echo "Pimidi: sel=${SEL} → ${CONFIG_TXT}"
 
-# Strip prior managed Pimidi / i2c baudrate lines we own
-TMP="$(mktemp)"
-while IFS= read -r line || [ -n "${line}" ]; do
-	s="${line#"${line%%[![:space:]]*}"}"
-	case "${s}" in
-		dtoverlay=pimidi*|*'--- Pimidi'*|*'--- end Pimidi'*)
-			continue ;;
-		dtparam=i2c_arm=on,i2c_arm_baudrate=*)
-			# Only drop the high-rate line we write; leave generic i2c alone.
-			continue ;;
-	esac
-	printf '%s\n' "${line}"
-done < "${CONFIG_TXT}" > "${TMP}"
+# HyperPixel (and other full-DPI panels) own the 40-pin. Writing pimidi +
+# i2c_arm here would black the panel. Stage 12 also strips these; skip early
+# when the HyperPixel profile is active unless explicitly overridden.
+if [ "${ENABLE_HYPERPIXEL4}" = "1" ] && [ "${HYPERPIXEL_KEEP_PIMIDI:-0}" != "1" ]; then
+	echo "  ENABLE_HYPERPIXEL4=1 — installing packages only (no pimidi DT overlay)."
+	echo "  TRS MIDI needs Profile A (HDMI) or USB MIDI on the HyperPixel stack."
+else
+	# Strip prior managed Pimidi / i2c baudrate lines we own
+	TMP="$(mktemp)"
+	while IFS= read -r line || [ -n "${line}" ]; do
+		s="${line#"${line%%[![:space:]]*}"}"
+		case "${s}" in
+			dtoverlay=pimidi*|*'--- Pimidi'*|*'--- end Pimidi'*)
+				continue ;;
+			dtparam=i2c_arm=on,i2c_arm_baudrate=*)
+				# Only drop the high-rate line we write; leave generic i2c alone.
+				continue ;;
+		esac
+		printf '%s\n' "${line}"
+	done < "${CONFIG_TXT}" > "${TMP}"
 
-# Ensure i2c-dev module loads
-if [ -f "${ROOTFS_DIR}/etc/modules" ]; then
-	if ! grep -qE '^i2c-dev' "${ROOTFS_DIR}/etc/modules"; then
-		echo "i2c-dev" >> "${ROOTFS_DIR}/etc/modules"
+	# Ensure i2c-dev module loads
+	if [ -f "${ROOTFS_DIR}/etc/modules" ]; then
+		if ! grep -qE '^i2c-dev' "${ROOTFS_DIR}/etc/modules"; then
+			echo "i2c-dev" >> "${ROOTFS_DIR}/etc/modules"
+		fi
 	fi
-fi
 
-cat >> "${TMP}" <<EOF
+	cat >> "${TMP}" <<EOF
 
 # --- Pimidi 2x2 TRS MIDI (sel=${SEL}) ---
 # See https://blokas.io/pimidi/docs/advanced-configuration/
@@ -49,9 +56,10 @@ dtoverlay=pimidi,sel=${SEL}
 # --- end Pimidi ---
 EOF
 
-cat "${TMP}" > "${CONFIG_TXT}"
-rm -f "${TMP}"
-echo "  wrote dtoverlay=pimidi,sel=${SEL}"
+	cat "${TMP}" > "${CONFIG_TXT}"
+	rm -f "${TMP}"
+	echo "  wrote dtoverlay=pimidi,sel=${SEL}"
+fi
 
 # Status helper
 install -d "${ROOTFS_DIR}/usr/local/bin"

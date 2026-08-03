@@ -1,13 +1,14 @@
-# Profile: Pi 5 + Pimidi + HyperPixel 4.0" 800×480 DPI @ 60
+# Profile B: Pi 5 + HyperPixel 4.0" 800×480 DPI (display-first)
 # Usage:
 #   cp config.hyperpixel4-pimidi.example config.local
 #   # optional WiFi: set WPA_* in config.local
 #   ./build-docker.sh
 #
 # Or one-shot:
-#   ENABLE_HYPERPIXEL4=1 ENABLE_HDMI_ULTRAWIDE=0 \
-#   ENABLE_PIMIDI=1 RK00PI_WIDTH=800 RK00PI_HEIGHT=480 \
-#   ./build-docker.sh
+#   ./build-docker.sh -c config.hyperpixel4-pimidi
+#
+# GPIO: HyperPixel owns the 40-pin. Stage 12 strips dtoverlay=pimidi so the
+# panel can light. Use USB MIDI here; use Profile A (HDMI) for TRS Pimidi.
 
 ENABLE_HYPERPIXEL4=1
 ENABLE_HDMI_ULTRAWIDE=0
@@ -16,8 +17,12 @@ ENABLE_WAVESHARE_DPI=0
 HYPERPIXEL_WIDTH=800
 HYPERPIXEL_HEIGHT=480
 HYPERPIXEL_REFRESH=60
-HYPERPIXEL_ROTATE=left
+# none first; left/270 once the picture is stable
+HYPERPIXEL_ROTATE=none
+HYPERPIXEL_CMDLINE_VIDEO=0
+HYPERPIXEL_KEEP_PIMIDI=0
 
+# Packages ok; DT overlay removed by HyperPixel stage
 ENABLE_PIMIDI=1
 PIMIDI_SEL=0
 

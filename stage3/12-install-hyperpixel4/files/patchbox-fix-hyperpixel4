@@ -1,76 +1,167 @@
 #!/bin/bash
-# Field enable HyperPixel 4 rectangular on a running Patchbox image.
-# Usage: sudo patchbox-fix-hyperpixel4
-#        sudo patchbox-fix-hyperpixel4 --rotate 270
+# Field-enable Pimoroni HyperPixel 4 rectangular on a running Patchbox image.
+#
+# Typical failure mode this fixes:
+#   • Image was built for HDMI ultrawide (Profile A) → no DPI overlay
+#   • Backlight flashes at power-on, then panel stays black
+#   • Pimidi / i2c_arm / forced hdmi_* modes hold pins the DPI panel needs
+#
+# Usage:
+#   sudo patchbox-fix-hyperpixel4              # bare overlay (bring-up)
+#   sudo patchbox-fix-hyperpixel4 --rotate 270  # landscape "left"
+#   sudo patchbox-fix-hyperpixel4 --keep-pimidi # NOT recommended (GPIO clash)
+#   sudo patchbox-fix-hyperpixel4 --square      # HyperPixel 4 Square
+#   sudo patchbox-fix-hyperpixel4 --video       # also set video=DPI-1:…
+#
+# After reboot: patchbox-hyperpixel-status
 set -euo pipefail
 [ "$(id -u)" -eq 0 ] || { echo "run with sudo"; exit 1; }
 
 ROT="none"
+KEEP_PIMIDI=0
+SQUARE=0
+SET_VIDEO=0
+W=800
+H=480
+R=60
+
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--rotate) ROT=$2; shift 2 ;;
-		-h|--help) sed -n '2,5p' "$0"; exit 0 ;;
+		--keep-pimidi) KEEP_PIMIDI=1; shift ;;
+		--square) SQUARE=1; W=720; H=720; shift ;;
+		--video) SET_VIDEO=1; shift ;;
+		--width) W=$2; shift 2 ;;
+		--height) H=$2; shift 2 ;;
+		-h|--help) sed -n '2,18p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 		*) echo "unknown: $1"; exit 1 ;;
 	esac
 done
 
 CFG=/boot/firmware/config.txt
 CMD=/boot/firmware/cmdline.txt
-[ -f "$CFG" ] || { echo "missing $CFG"; exit 1; }
+[ -f "$CFG" ] || CFG=/boot/config.txt
+[ -f "$CFG" ] || { echo "missing config.txt under /boot/firmware or /boot"; exit 1; }
+[ -f "$CMD" ] || CMD=/boot/cmdline.txt
 
-cp -a "$CFG" "${CFG}.bak.$(date +%Y%m%d%H%M%S)"
+TS=$(date +%Y%m%d%H%M%S)
+cp -a "$CFG" "${CFG}.bak.${TS}"
+[ -f "$CMD" ] && cp -a "$CMD" "${CMD}.bak.${TS}"
 
-# Drop forced HDMI modes + old hyperpixel lines
+BASE="vc4-kms-dpi-hyperpixel4"
+[ "$SQUARE" = "1" ] && BASE="vc4-kms-dpi-hyperpixel4sq"
+
+# Verify overlay blob exists in firmware
+for d in /boot/firmware/overlays /boot/overlays; do
+	if [ -f "$d/${BASE}.dtbo" ]; then
+		echo "overlay blob: $d/${BASE}.dtbo"
+		break
+	fi
+done
+if [ ! -f /boot/firmware/overlays/${BASE}.dtbo ] && [ ! -f /boot/overlays/${BASE}.dtbo ]; then
+	echo "WARNING: ${BASE}.dtbo not found under /boot/*/overlays — display will stay black"
+	echo "  apt install raspberrypi-kernel  (or update firmware package)"
+fi
+
 TMP=$(mktemp)
 while IFS= read -r line || [ -n "$line" ]; do
 	s="${line#"${line%%[![:space:]]*}"}"
 	case "$s" in
-		dtoverlay=vc4-kms-dpi-hyperpixel4*|hdmi_group=*|hdmi_mode=*|hdmi_cvt=*|hdmi_drive=*|hdmi_force_hotplug=*|hdmi_ignore_edid=*)
+		# DPI / HyperPixel (we rewrite)
+		dtoverlay=vc4-kms-dpi-hyperpixel4*|dtoverlay=vc4-kms-dpi-hyperpixel4sq*|dtoverlay=vc4-kms-dpi-generic*)
 			continue ;;
-		*'--- HyperPixel 4'*|*'--- end HyperPixel 4'*|*'--- HDMI ultrawide'*|*'--- end HDMI ultrawide'*)
+		# Forced HDMI modes (Profile A) fight DPI as primary
+		hdmi_group=*|hdmi_mode=*|hdmi_cvt=*|hdmi_drive=*|hdmi_force_hotplug=*|hdmi_ignore_edid=*)
+			continue ;;
+		# Waveshare leftovers
+		dtoverlay=waveshare-35dpi*|dtoverlay=waveshare-touch-35dpi*|dtoverlay=vc4-kms-DPI-35inch*)
+			continue ;;
+		# Pimidi claims I2C + GPIO that HyperPixel needs for DPI pinmux
+		dtoverlay=pimidi*|dtparam=i2c_arm=*|dtparam=i2c_arm_baudrate=*|dtparam=spi=on)
+			if [ "$KEEP_PIMIDI" = "1" ]; then
+				: # keep
+			else
+				continue
+			fi
+			;;
+		*'--- HyperPixel 4'*|*'--- end HyperPixel 4'*|*'--- HDMI ultrawide'*|*'--- end HDMI ultrawide'*|*'--- Pimidi'*|*'--- end Pimidi'*|*'--- Waveshare'*|*'--- end Waveshare'*)
 			continue ;;
 	esac
 	printf '%s\n' "$line"
 done < "$CFG" > "$TMP"
 
+# Ensure KMS base + framebuffers
 grep -qE '^dtoverlay=vc4-kms-v3d' "$TMP" || echo "dtoverlay=vc4-kms-v3d" >> "$TMP"
 grep -qE '^max_framebuffers=' "$TMP" || echo "max_framebuffers=2" >> "$TMP"
 
-OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4"
+# Explicitly leave arm I2C/SPI off (HyperPixel bitbangs its own touch bus)
+if ! grep -qE '^#?dtparam=i2c_arm=' "$TMP"; then
+	echo "#dtparam=i2c_arm=on   # off — HyperPixel owns DPI pins" >> "$TMP"
+fi
+if ! grep -qE '^#?dtparam=spi=' "$TMP"; then
+	echo "#dtparam=spi=on       # off — HyperPixel owns DPI pins" >> "$TMP"
+fi
+
+OVERLAY="dtoverlay=${BASE}"
 case "$ROT" in
-	none|"") OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4" ;;
-	0|normal) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=0" ;;
-	90|right) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=90" ;;
-	180|inverted) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=180" ;;
-	270|left) OVERLAY="dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270" ;;
+	none|"") OVERLAY="dtoverlay=${BASE}" ;;
+	0|normal) OVERLAY="dtoverlay=${BASE},rotate=0" ;;
+	90|right) OVERLAY="dtoverlay=${BASE},rotate=90" ;;
+	180|inverted) OVERLAY="dtoverlay=${BASE},rotate=180" ;;
+	270|left) OVERLAY="dtoverlay=${BASE},rotate=270" ;;
+	*) echo "bad --rotate $ROT (use none|0|90|180|270|left|right|normal|inverted)"; exit 1 ;;
 esac
 
 cat >> "$TMP" <<EOF
 
-# --- HyperPixel 4 (field fix) ---
+# --- HyperPixel 4 (field fix ${TS}) ---
+# Official KMS path: https://learn.pimoroni.com/getting-started-with-hyperpixel-4
+# GPIO: DPI uses ~28 pins — do NOT stack Pimidi/Pisound on the same header.
 ${OVERLAY}
 # --- end HyperPixel 4 ---
 EOF
 cat "$TMP" > "$CFG"
 rm -f "$TMP"
 
+# cmdline: drop forced HDMI; video=DPI is optional (overlay usually sets timings)
 if [ -f "$CMD" ]; then
-	cp -a "$CMD" "${CMD}.bak.$(date +%Y%m%d%H%M%S)"
-	# strip old video= hints, add DPI
-	sed -E 's/ *video=HDMI-A-[12]:[^ ]*//g; s/ *video=DPI-1:[^ ]*//g' "$CMD" | tr -s ' ' > "${CMD}.1"
-	if ! grep -q 'video=DPI-1:' "${CMD}.1"; then
-		sed 's/^/video=DPI-1:800x480@60D /' "${CMD}.1" | tr -s ' ' | sed 's/ $//' > "$CMD"
-		echo >> "$CMD"
+	sed -E 's/ *video=HDMI-A-[12]:[^ ]*//g; s/ *video=DPI-1:[^ ]*//g; s/ *video=DSI-1:[^ ]*//g' \
+		"$CMD" | tr -s ' ' | sed 's/^ //;s/ $//' > "${CMD}.1"
+	if [ "$SET_VIDEO" = "1" ]; then
+		if ! grep -q 'video=DPI-1:' "${CMD}.1"; then
+			sed "s/^/video=DPI-1:${W}x${H}@${R}D /" "${CMD}.1" | tr -s ' ' | sed 's/ $//' > "$CMD"
+		else
+			cat "${CMD}.1" > "$CMD"
+		fi
 	else
 		cat "${CMD}.1" > "$CMD"
 	fi
+	# ensure single trailing newline
+	[ -n "$(tail -c1 "$CMD" 2>/dev/null)" ] && echo >> "$CMD" || true
 	rm -f "${CMD}.1"
 fi
 
-echo "Wrote ${OVERLAY}"
-echo "cmdline: $(cat "$CMD" 2>/dev/null)"
-echo "Reboot: sudo reboot"
-echo "If still black: try --rotate none (default) vs --rotate 270; check:"
-echo "  ls /boot/firmware/overlays/vc4-kms-dpi-hyperpixel4.dtbo"
-echo "  dmesg | grep -i dpi"
+# Point kiosk geometry at panel if configs exist
+for conf in /etc/rk00pi/config.toml /etc/chordranger/config.toml; do
+	if [ -f "$conf" ]; then
+		sed -i -E "s/^(width\\s*=\\s*)[0-9]+/\\1${W}/; s/^(height\\s*=\\s*)[0-9]+/\\1${H}/" "$conf" 2>/dev/null || true
+		echo "updated geometry in $conf → ${W}x${H}"
+	fi
+done
+
+echo
+echo "Wrote: ${OVERLAY}"
+echo "config: $CFG  (backup ${CFG}.bak.${TS})"
+[ -f "$CMD" ] && echo "cmdline: $(tr -d '\n' < "$CMD")"
+if [ "$KEEP_PIMIDI" = "1" ]; then
+	echo "NOTE: --keep-pimidi set — if panel stays black, re-run WITHOUT it."
+else
+	echo "Removed: hdmi_* force modes, dtoverlay=pimidi, dtparam=i2c_arm (GPIO free for DPI)."
+	echo "MIDI: use USB host, or rebuild Profile A (HDMI + Pimidi)."
+fi
+echo
+echo "Reboot now:  sudo reboot"
+echo "Then check:  patchbox-hyperpixel-status"
+echo "             ls /sys/class/drm/card*-DPI-*/status"
+echo "             dmesg | grep -iE 'dpi|hyperpixel|vc4|drm'"
 exit 0

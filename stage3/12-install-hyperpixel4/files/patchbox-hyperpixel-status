@@ -2,15 +2,31 @@
 # HyperPixel 4 + touch diagnostics
 set -euo pipefail
 
-echo "=== config.txt (display) ==="
-grep -nE 'hyperpixel|hdmi_|dtoverlay=vc4|max_framebuffers' /boot/firmware/config.txt 2>/dev/null || true
+CFG=/boot/firmware/config.txt
+[ -f "$CFG" ] || CFG=/boot/config.txt
+CMD=/boot/firmware/cmdline.txt
+[ -f "$CMD" ] || CMD=/boot/cmdline.txt
+
+echo "=== config.txt (display / GPIO) ==="
+if [ -f "$CFG" ]; then
+	grep -nE 'hyperpixel|hdmi_|dtoverlay=vc4|dtoverlay=pimidi|max_framebuffers|dtparam=i2c|dtparam=spi|dtoverlay=waveshare' \
+		"$CFG" 2>/dev/null || true
+else
+	echo "(missing $CFG)"
+fi
 echo
 echo "=== cmdline ==="
-cat /boot/firmware/cmdline.txt 2>/dev/null || true
+cat "$CMD" 2>/dev/null || true
 echo
 echo
-echo "=== DRM ==="
+echo "=== overlay blobs ==="
+ls -la /boot/firmware/overlays/vc4-kms-dpi-hyperpixel4*.dtbo \
+	/boot/overlays/vc4-kms-dpi-hyperpixel4*.dtbo 2>/dev/null || \
+	echo "WARNING: hyperpixel dtbo not found"
+echo
+echo "=== DRM connectors ==="
 if [ -d /sys/class/drm ]; then
+	found_dpi=0
 	for c in /sys/class/drm/card*-*; do
 		[ -e "$c/status" ] || continue
 		name=$(basename "$c")
@@ -19,8 +35,23 @@ if [ -d /sys/class/drm ]; then
 		modes=""
 		[ -f "$c/modes" ] && modes=$(head -5 "$c/modes" | tr '\n' ' ')
 		echo "  $name status=$st enabled=$en modes=[$modes]"
+		case "$name" in
+			*DPI*) found_dpi=1 ;;
+		esac
 	done
+	if [ "$found_dpi" = "0" ]; then
+		echo
+		echo "NO DPI connector — HyperPixel overlay did not bind."
+		echo "  • Is dtoverlay=vc4-kms-dpi-hyperpixel4 in config.txt?"
+		echo "  • Remove dtoverlay=pimidi and dtparam=i2c_arm (GPIO clash)."
+		echo "  • Fix: sudo patchbox-fix-hyperpixel4 && sudo reboot"
+	fi
+else
+	echo "(no /sys/class/drm)"
 fi
+echo
+echo "=== dmesg (dpi / drm / goodix) ==="
+dmesg 2>/dev/null | grep -iE 'dpi|hyperpixel|goodix|Cannot find any crtc|vc4-drm' | tail -30 || true
 echo
 echo "=== touch / Goodix ==="
 grep -E 'Name=|Handlers=' /proc/bus/input/devices 2>/dev/null | head -40 || true
@@ -29,12 +60,16 @@ if id rk00pi >/dev/null 2>&1; then
 	if id -nG rk00pi 2>/dev/null | tr ' ' '\n' | grep -qx input; then
 		echo "rk00pi ∈ input: yes"
 	else
-		echo "rk00pi ∈ input: NO"
+		echo "rk00pi ∈ input: NO (touch will fail under kmsdrm)"
 	fi
 fi
 echo
-echo "=== Pimidi (if stacked) ==="
+echo "=== Pimidi (GPIO contested with HyperPixel) ==="
+if grep -qE '^dtoverlay=pimidi' "$CFG" 2>/dev/null; then
+	echo "WARNING: dtoverlay=pimidi is still enabled — this often blacks the panel."
+	echo "  sudo patchbox-fix-hyperpixel4   # strips pimidi DT"
+fi
 amidi -l 2>/dev/null || true
-lsmod | grep -E 'snd_pimidi|i2c' || true
+lsmod 2>/dev/null | grep -E 'snd_pimidi|i2c' || true
 echo
 echo "See ~/HYPERPIXEL4.txt"

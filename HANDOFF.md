@@ -17,20 +17,31 @@ Raspberry Pi 5
   └── RK-00pi kiosk · hub pimidi-2x2 · soft tape
 ```
 
-### Profile B — HyperPixel 4.0" DPI (`config.hyperpixel4-pimidi.example`)
+### Profile B — HyperPixel 4.0" DPI (`config.hyperpixel4-pimidi` / `.example`)
+
+**Black panel / backlight-only:** the last default deploy image was often
+**Profile A (HDMI)** — no `dtoverlay=vc4-kms-dpi-hyperpixel4`. HyperPixel then
+only flashes its backlight. Fix without rebuild (SD in Mac):
+
+```bash
+./scripts/fix-hyperpixel4-bootfs.sh /Volumes/bootfs
+```
+
+On a booted Pi (SSH): `sudo patchbox-fix-hyperpixel4 && sudo reboot`.  
+Do **not** stack `dtoverlay=pimidi` with HyperPixel — DPI needs the header.
 
 ```text
 Raspberry Pi 5
-  ├── Blokas Pimidi (sel=0) — 2×2 TRS MIDI  ⚠ pin-contested with DPI
-  ├── Pimoroni HyperPixel 4.0" rectangular
+  ├── Pimoroni HyperPixel 4.0" rectangular (owns 40-pin)
   │     • 800×480 @ 60 FPS DPI (dtoverlay=vc4-kms-dpi-hyperpixel4)
   │     • Goodix capacitive touch
+  ├── USB MIDI (recommended) — Pimidi DT overlay is NOT loaded
   └── RK-00pi 800×480 (portrait chrome — aspect < 2:1)
 ```
 
-**GPIO warning:** HyperPixel 4 DPI uses almost the entire 40-pin. Pimidi needs
-I2C + a data GPIO. Stacking both may leave Pimidi silent — verify with
-`amidi -l` / `patchbox-pimidi-status`. Fallbacks: USB MIDI, or HDMI bar + Pimidi.
+**GPIO:** HyperPixel uses ~28 pins — no room for Pimidi/Pisound DT on the same
+header. Stage 12 strips `dtoverlay=pimidi` / `dtparam=i2c_arm`. For TRS MIDI use
+Profile A (HDMI + Pimidi) or USB MIDI.
 
 **Parked:** Pisound (audio + The Button).
 

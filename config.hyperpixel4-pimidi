@@ -1,7 +1,10 @@
-# Full config for HyperPixel 4.0" + Pimidi build (literals — not env-dependent).
+# Full config for HyperPixel 4.0" display-first build (literals — not env-dependent).
 # Usage:
 #   ./build-docker.sh -c config.hyperpixel4-pimidi
 # Or: cp config.hyperpixel4-pimidi config  &&  ./build-docker.sh
+#
+# Display owns the 40-pin. Pimidi packages can install, but the DT overlay is
+# stripped by stage 12 so DPI can paint. Use USB MIDI for I/O on this profile.
 
 IMG_NAME="Patchbox"
 FIRST_USER_NAME="patch"
@@ -26,8 +29,12 @@ HYPERPIXEL_HEIGHT=480
 HYPERPIXEL_REFRESH=60
 # none = most reliable first bring-up; use left/270 once the panel paints
 HYPERPIXEL_ROTATE=none
+# Do not force video=DPI-1:… (wrong mode → black). Overlay carries timings.
+HYPERPIXEL_CMDLINE_VIDEO=0
+# Do not keep pimidi DT on the header (GPIO clash → black panel).
+HYPERPIXEL_KEEP_PIMIDI=0
 
-# MIDI
+# MIDI packages only — DT overlay dropped while HyperPixel is primary
 ENABLE_PIMIDI=1
 PIMIDI_SEL=0
 
@@ -35,6 +42,7 @@ PIMIDI_SEL=0
 ENABLE_RK00PI=1
 ENABLE_RK00PI_SERVICE=1
 ENABLE_RK00PI_BUTTON=0
+# USB MIDI / software ports until a non-DPI MIDI path is attached
 RK00PI_HUB_PRESET=pimidi-2x2
 RK00PI_WIDTH=800
 RK00PI_HEIGHT=480
