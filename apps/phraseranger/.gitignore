@@ -1,0 +1,12 @@
+# Build and run artefacts. Note the repo root ignores `deploy/*`, but that
+# pattern is anchored there — this app's deploy/ directory is tracked, and
+# must be: the systemd unit, config.toml and the button scripts are what the
+# install stage copies onto the image.
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+# Projects a player saves while running from a checkout. Factory content lives
+# in data/*.py and is tracked.
+data/projects/
+data/autosave/
