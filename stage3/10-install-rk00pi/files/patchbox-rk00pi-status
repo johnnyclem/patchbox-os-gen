@@ -118,6 +118,21 @@ echo "MIDI / audio (best-effort):"
 amidi -l 2>/dev/null | sed 's/^/  /' || true
 aplay -l 2>/dev/null | head -20 | sed 's/^/  /' || true
 echo
+
+# The failure this catches: every DIN endpoint asking for a HAT that is not
+# on this Pi. The devices all enumerate, the diagnostics screen lists them,
+# and no note or clock moves because nothing ever bound.
+echo "=== MIDI hub endpoints ==="
+if [ -x /usr/local/sbin/patchbox-rk00pi-autohub ]; then
+	/usr/local/sbin/patchbox-rk00pi-autohub 2>&1 | sed 's/^/  /' || true
+	if [ -f /etc/rk00pi/autohub.disabled ]; then
+		echo "  autohub: disabled by /etc/rk00pi/autohub.disabled"
+	fi
+else
+	echo "  patchbox-rk00pi-autohub missing (re-run stage3/10-install-rk00pi)"
+fi
+echo
+
 echo "Hints: journalctl -u rk00pi -b -n 80"
 echo "       sudo systemctl restart rk00pi"
 echo "       rk00pi-btn PING · rk00pi-btn --map · rk00pi-btn --list"

@@ -1,0 +1,97 @@
+# The RK-00pi install stage's own helpers.
+#
+# The app itself lives in the RK-00pi submodule and is tested there; what
+# this covers is the part of the appliance that ships from *this* repo — the
+# stage script and the commands it installs into /usr/local. They run once,
+# unattended, on a unit nobody is watching, and patchbox-rk00pi-autohub
+# rewrites a file the user's music lives in, so it gets real tests rather
+# than a syntax check.
+name: rk00pi-stage
+
+on:
+  push:
+    branches:
+      - patchbox-2024-01
+      - master
+      - main
+    paths: &paths
+      - 'stage3/10-install-rk00pi/**'
+      - 'config'
+      - 'config.hyperpixel4-pimidi*'
+      - '.github/workflows/rk00pi-stage.yml'
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 3.11 is what Bookworm ships and therefore what the appliance runs;
+        # 3.12 is the canary for the next Raspberry Pi OS base. The tool is
+        # stdlib-only on purpose — it has to work on a unit whose venv is
+        # half-built, which is exactly when someone needs it.
+        python-version: ['3.11', '3.12']
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: python -m pip install --upgrade pip pytest pyflakes
+
+      - name: Lint
+        run: |
+          set -euo pipefail
+          # The tool ships without a .py suffix (it is a command, not a
+          # module), so name it explicitly.
+          python -m pyflakes \
+            stage3/10-install-rk00pi/files/patchbox-rk00pi-autohub \
+            stage3/10-install-rk00pi/tests/*.py
+
+      - name: Tests
+        run: python -m pytest -q stage3/10-install-rk00pi/tests
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse the shipped scripts
+        run: |
+          set -euo pipefail
+          # A syntax error in any of these is a brick: the stage runs inside
+          # the image build and the helpers run on a headless unit. Parse
+          # only — none of them can be executed off a Pi.
+          bash -n config
+          bash -n config.hyperpixel4-pimidi
+          bash -n config.hyperpixel4-pimidi.example
+          bash -n stage3/10-install-rk00pi/01-run.sh
+          for f in stage3/10-install-rk00pi/files/*; do
+            case "$f" in
+              # ast.parse rather than py_compile: this must not leave a
+              # __pycache__ next to files the stage installs verbatim.
+              *patchbox-rk00pi-autohub)
+                python3 -c 'import ast,sys; ast.parse(open(sys.argv[1]).read())' "$f" ;;
+              *) bash -n "$f" ;;
+            esac
+          done
+          echo "all shipped scripts parse"
+
+      - name: The service drop-in must name a command the stage installs
+        run: |
+          set -euo pipefail
+          # The drop-in is written as a heredoc inside a chroot block, so a
+          # renamed helper fails at boot on the device and nowhere earlier.
+          for command in $(grep -oE '/usr/local/(bin|sbin)/patchbox-[a-z0-9-]+' \
+                           stage3/10-install-rk00pi/01-run.sh | sort -u); do
+            name="${command##*/}"
+            if [ ! -f "stage3/10-install-rk00pi/files/$name" ]; then
+              echo "01-run.sh references $command with no files/$name" >&2
+              exit 1
+            fi
+          done
+          echo "every referenced helper exists"

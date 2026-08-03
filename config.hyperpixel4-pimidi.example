@@ -25,6 +25,9 @@ ENABLE_RK00PI=1
 ENABLE_RK00PI_SERVICE=1
 ENABLE_RK00PI_BUTTON=0
 RK00PI_HUB_PRESET=pimidi-2x2
+# rk00pi.service re-fits the hub to the live ALSA graph at each start,
+# so a unit built for Pimidi still binds if it boots on another HAT.
+ENABLE_RK00PI_AUTOHUB=1
 RK00PI_WIDTH=800
 RK00PI_HEIGHT=480
 

@@ -234,6 +234,11 @@ install -m 755 files/patchbox-diag-input-button \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-diag-input-button"
 install -m 755 files/patchbox-boot-kiosk \
 	"${ROOTFS_DIR}/usr/local/sbin/patchbox-boot-kiosk"
+# Fits the hub to the MIDI hardware the unit actually has (see the drop-in
+# below). Also the read-only "why is this endpoint unbound" diagnostic, so it
+# is installed whether or not the boot-time pass is enabled.
+install -m 755 files/patchbox-rk00pi-autohub \
+	"${ROOTFS_DIR}/usr/local/sbin/patchbox-rk00pi-autohub"
 
 # Brief note for the login user (alongside DISPLAY-PISOUND.txt)
 install -d "${ROOTFS_DIR}/home/${FIRST_USER_NAME}"
@@ -269,6 +274,20 @@ Checks
   patchbox-rk00pi-status
   journalctl -u rk00pi -b -n 80
   amidi -l ; aplay -l
+
+MIDI silent? (devices listed on DIAGNOSTICS, nothing plays or records)
+  An endpoint binds to an ALSA port by *name*. If the image was built for
+  one HAT and this Pi carries another, every DIN endpoint asks for a client
+  that is not here and nothing binds — the scan still shows the device names.
+
+  patchbox-rk00pi-autohub            # which endpoints resolve, and why not
+  sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi
+  # on the panel instead: Set -> I/O -> MIDI -> DIN
+
+  The service already runs --apply at every start; the previous hub is kept
+  at <project>.autohub.bak and the generated one at
+  ${DATA_DIR}/presets/auto.rkhub. To stop it touching the hub at all:
+  sudo touch /etc/rk00pi/autohub.disabled
 
 Field repair (touch dead / button dead)
   sudo patchbox-fix-input-button
@@ -425,8 +444,25 @@ if [ "${ENABLE_RK00PI_SERVICE:-1}" = "1" ]; then
 	# — Patchbox amidiauto *→* races bind_input (EBUSY → unbound din_in).
 	systemctl disable jack.service 2>/dev/null || true
 	systemctl disable amidiauto.service 2>/dev/null || true
-	# Drop-in: keep desktop audio stacks off the HAT + load starter project
 	mkdir -p /etc/systemd/system/rk00pi.service.d
+	# Drop-in: fit the hub to this unit's MIDI hardware before the app opens
+	# its sequencer clients. The image bakes one hub preset at build time and
+	# an endpoint binds by ALSA client *name*, so a build configured for one
+	# HAT boots every DIN endpoint unbound on a rig carrying the other — the
+	# panel lists the devices and not a note moves. Runs as root (+), never
+	# blocks the boot (-), and only rewrites the hub when doing so binds more
+	# endpoints than the hub already there.
+	if [ "${ENABLE_RK00PI_AUTOHUB:-1}" = "1" ]; then
+		cat > /etc/systemd/system/rk00pi.service.d/10-autohub.conf <<'UNIT'
+[Service]
+ExecStartPre=-+/usr/local/sbin/patchbox-rk00pi-autohub --apply --project /var/lib/rk00pi/projects/starter.rkproj
+UNIT
+		echo "  autohub drop-in installed (touch /etc/rk00pi/autohub.disabled to opt out)"
+	else
+		rm -f /etc/systemd/system/rk00pi.service.d/10-autohub.conf
+		echo "  ENABLE_RK00PI_AUTOHUB!=1 — hub stays exactly as the preset baked it"
+	fi
+	# Drop-in: keep desktop audio stacks off the HAT + load starter project
 	cat > /etc/systemd/system/rk00pi.service.d/20-tape-starter.conf <<'UNIT'
 [Service]
 ExecStartPre=+/bin/systemctl stop jack.service

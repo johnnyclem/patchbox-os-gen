@@ -42,7 +42,21 @@ PIMIDI_SEL="${PIMIDI_SEL:-0}"
 ENABLE_RK00PI="${ENABLE_RK00PI:-1}"
 ENABLE_RK00PI_SERVICE="${ENABLE_RK00PI_SERVICE:-1}"
 ENABLE_RK00PI_BUTTON="${ENABLE_RK00PI_BUTTON:-0}"
-RK00PI_HUB_PRESET="${RK00PI_HUB_PRESET:-pimidi-2x2}"
+# Starter hub preset. A hub endpoint binds to an ALSA port by *client name*,
+# so this has to agree with the HAT that is actually on the header: baking
+# pimidi-2x2 onto a Pisound rig boots every DIN endpoint unbound and no note
+# or clock moves in either direction. Follow ENABLE_PIMIDI unless told
+# otherwise; rk008 is the single-DIN Pisound profile.
+if [ "${ENABLE_PIMIDI}" = "1" ]; then
+	RK00PI_HUB_PRESET="${RK00PI_HUB_PRESET:-pimidi-2x2}"
+else
+	RK00PI_HUB_PRESET="${RK00PI_HUB_PRESET:-rk008}"
+fi
+# Belt and braces for the same failure: rk00pi.service re-fits the hub to the
+# live ALSA graph at every start (patchbox-rk00pi-autohub), which also picks
+# up USB MIDI devices the baked preset knows nothing about. Set to 0 to boot
+# strictly what the preset says. On the unit: /etc/rk00pi/autohub.disabled
+ENABLE_RK00PI_AUTOHUB="${ENABLE_RK00PI_AUTOHUB:-1}"
 # Empty → HyperPixel dims when ENABLE_HYPERPIXEL4=1, else HDMI dims
 RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
