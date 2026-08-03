@@ -9,6 +9,8 @@
 pygame==2.6.1
 mido==1.3.3
 python-rtmidi==1.5.8
+numpy==2.2.6
+sounddevice==0.5.1
 
 # Development / CI
 pytest==9.1.1

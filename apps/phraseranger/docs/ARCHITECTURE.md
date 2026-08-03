@@ -74,6 +74,7 @@ one boolean.
 
 ## Deferred (deliberately)
 
-DAC preview tones for the slicer (suite Phase 4), theory-aware cruise
-suggestions, per-note piano-roll editing (out of scope by PRD), audio
-warping (ditto).
+Theory-aware cruise suggestions, per-note piano-roll editing (out of scope
+by PRD), audio warping (ditto). (DAC preview shipped with suite Phase 4:
+point a track's ``dest`` at ``internal`` and the soft-triangle synth answers
+on the DAC.)

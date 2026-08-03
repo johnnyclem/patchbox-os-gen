@@ -83,6 +83,7 @@ the piece you had.
 
 ## Deferred (deliberately)
 
-Internal audio drones (suite Phase 4 — ``core/drones.py`` is the hook), the
-MAP node-graph view, Markov learning from live input, order > 2, per-step
-micro-timing.
+The MAP node-graph view, Markov learning from live input, order > 2,
+per-step micro-timing. (Internal audio drones shipped with suite Phase 4:
+point a layer's ``dest`` at ``internal`` and the organ synth answers on the
+DAC — see ``core/drones.py``.)

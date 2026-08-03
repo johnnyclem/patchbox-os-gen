@@ -310,3 +310,24 @@ def test_snapshot_reports_the_piece():
     assert ("din_out", True) not in snapshot.outputs_bound or True
     assert snapshot.timeline_pos == -1
     stop_clean(engine, midi)
+
+
+# --- the internal endpoint (Phase 4) -------------------------------------------
+
+def test_drone_layer_on_internal_drives_the_synth_and_releases():
+    from rangerkit.audio.bridge import SynthMidiBridge
+    from rangerkit.audio.render import render_blocks, rms
+    from rangerkit.audio.synth import SimpleSynth
+
+    project = default_project()
+    project.params["layers"][3]["dest"] = "internal"    # the harmony pads
+    synth = SimpleSynth("organ")
+    midi = SynthMidiBridge(CaptureMidiIO(), synth)
+    engine = GenRangerEngine(project, midi, FakeClock())
+    engine.submit(base.Play())
+    run_ticks(engine, TICKS_PER_BAR * 2)
+    assert rms(render_blocks(synth, 8)) > 0.001         # drones sounding
+    engine.submit(base.Panic())
+    engine.step()
+    assert not synth.hanging_voices()       # panic reached the DAC too
+    assert not midi.hanging()

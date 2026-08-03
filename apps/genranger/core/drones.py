@@ -1,12 +1,13 @@
-"""Internal audio drones — the suite Phase 4 hook.
+"""Internal audio drones — wired (RANGER-SUITE-PLAN Phase 4).
 
-P0 ships the *role* only: a layer with role "drone" renders long overlapping
-notes to its MIDI destination like any other layer (``note_length =
-"drone"`` holds a note for a full cycle). When ``rangerkit.audio`` lands
-(RANGER-SUITE-PLAN Phase 4), this module grows a small additive/organ patch
-that doubles the drone layer on the DAC — nothing else in the app will need
-to change, which is the point of writing the hook down now.
+There is no drone engine here, and that is the design: a drone layer is an
+ordinary layer whose destination is ``internal``. ``main.build_rig`` wraps
+the MIDI backend in ``rangerkit.audio.bridge.SynthMidiBridge`` with a small
+organ-patch synth on the DAC, so ``dest = "internal"`` (one tap on the
+LAYERS screen) is all it takes — the engine renders, books and releases
+those notes exactly like DIN notes, and CI exercises the same path with the
+synth behind a CaptureMidiIO.
 """
 from __future__ import annotations
 
-AUDIO_AVAILABLE = False         # flipped by the Phase 4 wiring
+AUDIO_AVAILABLE = True          # the internal endpoint answers
