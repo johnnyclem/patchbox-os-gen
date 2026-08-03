@@ -215,9 +215,17 @@ in one:
   including the Pisound button map, and restores the previous map on the way
   back out.
 
-The two apps share no code. They share conventions — `/opt/<app>`,
+RK-00pi and ChordRanger share no code. They share conventions — `/opt/<app>`,
 `/var/lib/<app>`, `/etc/<app>/config.toml`, a button socket under `/run` — so
 an operator who knows one knows the other.
+
+The six newer Ranger apps (MidiRanger, GenRanger, PhraseRanger, SceneRanger,
+GrooveRanger, SynthRanger) *do* share code: `apps/rangerkit`, whose theory,
+clock, MIDI and engine skeleton were extracted from this app. ChordRanger
+predates the kit and deliberately remains self-contained — it stays on its
+own copies until a deliberate migration, so nothing here moves under a
+shipped instrument's feet. The family-wide switcher `patchbox-app` also knows
+this app; `patchbox-chordranger` keeps working unchanged.
 
 ---
 

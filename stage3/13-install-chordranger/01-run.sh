@@ -241,7 +241,7 @@ print(f"  chordranger: {len(factory_styles())} styles, "
 PY
 
 systemctl daemon-reload
-if [ "${ENABLE_CHORDRANGER_SERVICE:-0}" = "1" ]; then
+if [ "${ENABLE_CHORDRANGER_SERVICE:-0}" = "1" ] || [ "${RANGER_BOOT_APP:-rk00pi}" = "chordranger" ]; then
 	# ChordRanger is the app that boots: stand RK-00pi down first so the two
 	# do not race for the panel on the next boot.
 	systemctl disable rk00pi.service 2>/dev/null || true

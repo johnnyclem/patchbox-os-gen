@@ -62,6 +62,39 @@ ENABLE_CHORDRANGER_SERVICE="${ENABLE_CHORDRANGER_SERVICE:-0}"
 CHORDRANGER_WIDTH="${CHORDRANGER_WIDTH:-}"
 CHORDRANGER_HEIGHT="${CHORDRANGER_HEIGHT:-}"
 
+# --- Ranger suite (apps/rangerkit + six sibling apps) ---
+# One kiosk app owns the panel; RANGER_BOOT_APP names the unit that boots.
+# Everything else installs disabled and swaps on-device with
+#   sudo patchbox-app enable <app>
+# (ENABLE_CHORDRANGER_SERVICE=1 remains equivalent to
+#  RANGER_BOOT_APP=chordranger for the shipped stage-13 path.)
+RANGER_BOOT_APP="${RANGER_BOOT_APP:-rk00pi}"
+
+# Per-app install toggles. Off until each app ships (its stage flips the
+# default to 1 in the PR that lands it): six qemu venv builds and ~100 MB per
+# app of venv on SDHC are not free.
+ENABLE_MIDIRANGER="${ENABLE_MIDIRANGER:-0}"
+ENABLE_GENRANGER="${ENABLE_GENRANGER:-0}"
+ENABLE_PHRASERANGER="${ENABLE_PHRASERANGER:-0}"
+ENABLE_SCENERANGER="${ENABLE_SCENERANGER:-0}"
+ENABLE_GROOVERANGER="${ENABLE_GROOVERANGER:-0}"
+ENABLE_SYNTHRANGER="${ENABLE_SYNTHRANGER:-0}"
+
+# Per-app panel override; empty → HyperPixel dims when ENABLE_HYPERPIXEL4=1,
+# else HDMI dims (same resolution order as RK-00pi and ChordRanger).
+MIDIRANGER_WIDTH="${MIDIRANGER_WIDTH:-}"
+MIDIRANGER_HEIGHT="${MIDIRANGER_HEIGHT:-}"
+GENRANGER_WIDTH="${GENRANGER_WIDTH:-}"
+GENRANGER_HEIGHT="${GENRANGER_HEIGHT:-}"
+PHRASERANGER_WIDTH="${PHRASERANGER_WIDTH:-}"
+PHRASERANGER_HEIGHT="${PHRASERANGER_HEIGHT:-}"
+SCENERANGER_WIDTH="${SCENERANGER_WIDTH:-}"
+SCENERANGER_HEIGHT="${SCENERANGER_HEIGHT:-}"
+GROOVERANGER_WIDTH="${GROOVERANGER_WIDTH:-}"
+GROOVERANGER_HEIGHT="${GROOVERANGER_HEIGHT:-}"
+SYNTHRANGER_WIDTH="${SYNTHRANGER_WIDTH:-}"
+SYNTHRANGER_HEIGHT="${SYNTHRANGER_HEIGHT:-}"
+
 # Off: Waveshare GPIO DPI (legacy)
 ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"
 

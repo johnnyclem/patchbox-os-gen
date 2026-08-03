@@ -1,0 +1,162 @@
+# Ranger suite tests — rangerkit and every app built on it.
+#
+# One workflow, a matrix over apps: a rangerkit change correctly re-runs
+# every consumer, and adding an app is one line in the matrix. The image
+# build itself is far too heavy for CI (qemu, a full rootfs, pip under
+# emulation), so this covers the part that is worth covering on every push.
+#
+# Everything runs headless. Cores are stdlib-only by design (numpy allowed
+# for the audio apps), the GUI runs under SDL's dummy driver, and
+# mido/rtmidi/sounddevice are deliberately absent so the null-backend
+# degradation paths are exercised on every run.
+#
+# chordranger has its own workflow (it predates rangerkit and does not
+# consume it); the two path filters do not overlap.
+name: ranger-apps
+
+on:
+  # push is scoped to the long-lived branches. Without that, a PR branch
+  # fires both events and every run happens twice — same commit, same
+  # result, two of every notification.
+  push:
+    branches:
+      - patchbox-2024-01
+      - master
+      - main
+    paths: &paths
+      - 'apps/rangerkit/**'
+      - 'apps/midiranger/**'
+      - 'apps/genranger/**'
+      - 'apps/phraseranger/**'
+      - 'apps/sceneranger/**'
+      - 'apps/grooveranger/**'
+      - 'apps/synthranger/**'
+      - 'stage3/*-install-rangerkit/**'
+      - 'stage3/*-install-midiranger/**'
+      - 'stage3/*-install-genranger/**'
+      - 'stage3/*-install-phraseranger/**'
+      - 'stage3/*-install-sceneranger/**'
+      - 'stage3/*-install-grooveranger/**'
+      - 'stage3/*-install-synthranger/**'
+      - '.github/workflows/ranger-apps.yml'
+  pull_request:
+    paths: *paths
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Apps join this list in the PR that lands them (Phase 1: midiranger,
+        # and so on down the build order).
+        app: [rangerkit]
+        # 3.11 is what Bookworm ships and therefore what the appliance runs;
+        # 3.12 is the canary for the next Raspberry Pi OS base.
+        python-version: ['3.11', '3.12']
+    defaults:
+      run:
+        working-directory: apps/${{ matrix.app }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # pygame + numpy only. mido/python-rtmidi/sounddevice/soundfile are
+          # deliberately absent: their absence is a supported state (the apps
+          # degrade to null MIDI/audio backends rather than refusing to
+          # boot), and CI is where that path gets exercised for free.
+          pip install pygame pytest pyflakes numpy
+
+      - name: The engine core must not need a display or an audio device
+        run: |
+          # The rule that makes everything else here possible: nothing core-
+          # side may import pygame or an audio backend at import time. Easy
+          # to break by accident and invisible until CI has no display.
+          # Modules are discovered by glob so this check cannot rot.
+          python ../rangerkit/ci/check_core_imports.py .
+
+      - name: Lint
+        run: python -m pyflakes .
+
+      - name: Tests
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: python -m pytest -q
+
+      - name: Render the panel at every shipped geometry
+        if: ${{ matrix.app != 'rangerkit' }}
+        env:
+          SDL_VIDEODRIVER: dummy
+          SDL_AUDIODRIVER: dummy
+        run: |
+          # Not an assertion about pixels — it proves every screen still
+          # draws end to end against a real engine, at all three panel
+          # geometries, and leaves images a reviewer can look at without
+          # the hardware on the desk.
+          python bench/render_panel.py /tmp/panel --size 1280x400
+          python bench/render_panel.py /tmp/panel --size 800x480
+          python bench/render_panel.py /tmp/panel --size 480x800
+
+      - name: Upload panel screenshots
+        if: ${{ always() && matrix.app != 'rangerkit' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: panel-${{ matrix.app }}-${{ matrix.python-version }}
+          path: /tmp/panel/*.png
+          if-no-files-found: warn
+
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Parse the shipped scripts
+        run: |
+          set -euo pipefail
+          # Install stages and button wrappers run on a device nobody is
+          # watching, so a syntax error in them is a brick. Parse-only: they
+          # cannot be executed off a Pi. Stages are found by glob rather than
+          # named — an ordinal is a position in the build order and moves.
+          bash -n apps/rangerkit/deploy/install-ranger-app.sh
+          bash -n config
+          for stage in stage3/*-install-rangerkit stage3/*-install-midiranger \
+                       stage3/*-install-genranger stage3/*-install-phraseranger \
+                       stage3/*-install-sceneranger stage3/*-install-grooveranger \
+                       stage3/*-install-synthranger; do
+            [ -d "$stage" ] || continue
+            echo "stage: $stage"
+            [ -f "$stage/01-run.sh" ] && bash -n "$stage/01-run.sh"
+            for f in "$stage"/files/*; do
+              [ -f "$f" ] && bash -n "$f"
+            done
+          done
+          for app in midiranger genranger phraseranger sceneranger \
+                     grooveranger synthranger; do
+            [ -d "apps/$app/deploy/pisound" ] || continue
+            sh -n "apps/$app/deploy/pisound/${app}_click.sh"
+            sh -n "apps/$app/deploy/pisound/${app}_hold.sh"
+            python3 -m py_compile "apps/$app/deploy/pisound/${app}-btn"
+          done
+          echo "all shipped scripts parse"
+
+      - name: Stage ordinals must be unique
+        run: |
+          set -euo pipefail
+          # Two stages sharing a number is not a git conflict — the
+          # directories differ — so nothing else catches it. pi-gen would
+          # run both in an order nobody chose.
+          dupes=$(ls -d stage3/[0-9][0-9]-* | sed 's|.*/||; s|-.*||' \
+                  | sort | uniq -d)
+          if [ -n "$dupes" ]; then
+            echo "duplicate stage3 ordinals: $dupes" >&2
+            ls -d stage3/[0-9][0-9]-* >&2
+            exit 1
+          fi
+          echo "stage3 ordinals are unique"
