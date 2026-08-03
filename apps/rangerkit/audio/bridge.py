@@ -44,7 +44,14 @@ class SynthMidiBridge:
             self.synth.note_off(event.channel, event.data1)
         elif kind is EventKind.CC and event.data1 in _ALL_OFF_CC:
             self.synth.all_off(event.channel)
-        # Program/CC/bend: the simple synth has nothing to do with them yet.
+        elif kind is EventKind.CC:
+            # Instruments that speak CC (GrooveRanger's sampler: p-locks,
+            # mixer levels, the master bus) expose ``control``; the simple
+            # synth doesn't, and for it CCs stay a no-op.
+            control = getattr(self.synth, "control", None)
+            if control is not None:
+                control(event.channel, event.data1, event.data2)
+        # Program/bend: nothing internal speaks them yet.
 
     def send_realtime(self, endpoint_id: str, status: int,
                       data: int = 0) -> None:

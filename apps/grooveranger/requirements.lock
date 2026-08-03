@@ -1,0 +1,17 @@
+# Pinned dependency set for the 0.1.0 image.
+#
+# The install stage tries this first and falls back to the floors in
+# requirements.txt package by package, so a pin that will not build under
+# qemu costs you a pin and not a boot.
+#
+# Regenerate on the reference Pi with:
+#   pip freeze | grep -iE 'pygame|mido|rtmidi|numpy|sounddevice' \
+#     > requirements.lock
+pygame==2.6.1
+mido==1.3.3
+python-rtmidi==1.5.8
+numpy==2.2.6
+sounddevice==0.5.1
+
+# Development / CI
+pytest==9.1.1

@@ -1,0 +1,179 @@
+{
+ "name": "rk909",
+ "dest": "internal",
+ "channel": 9,
+ "pads": [
+  {
+   "name": "KICK",
+   "note": 36,
+   "layers": [
+    [
+     0,
+     "kick.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.0,
+   "reverb_send": 0.0
+  },
+  {
+   "name": "SNAR",
+   "note": 38,
+   "layers": [
+    [
+     0,
+     "snare_soft.wav"
+    ],
+    [
+     96,
+     "snare_hard.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.0,
+   "reverb_send": 0.18
+  },
+  {
+   "name": "CLAP",
+   "note": 39,
+   "layers": [
+    [
+     0,
+     "clap.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.1,
+   "reverb_send": 0.22
+  },
+  {
+   "name": "RIM",
+   "note": 37,
+   "layers": [
+    [
+     0,
+     "rim.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.0,
+   "reverb_send": 0.12
+  },
+  {
+   "name": "CHAT",
+   "note": 42,
+   "layers": [
+    [
+     0,
+     "chat.wav"
+    ]
+   ],
+   "choke": 1,
+   "group": 1,
+   "delay_send": 0.0,
+   "reverb_send": 0.0
+  },
+  {
+   "name": "OHAT",
+   "note": 46,
+   "layers": [
+    [
+     0,
+     "ohat.wav"
+    ]
+   ],
+   "choke": 1,
+   "group": 1,
+   "delay_send": 0.0,
+   "reverb_send": 0.1
+  },
+  {
+   "name": "LTOM",
+   "note": 45,
+   "layers": [
+    [
+     0,
+     "ltom.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.0,
+   "reverb_send": 0.0
+  },
+  {
+   "name": "HTOM",
+   "note": 50,
+   "layers": [
+    [
+     0,
+     "htom.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.0,
+   "reverb_send": 0.0
+  },
+  {
+   "name": "RIDE",
+   "note": 51,
+   "layers": [
+    [
+     0,
+     "ride.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 2,
+   "delay_send": 0.0,
+   "reverb_send": 0.15
+  },
+  {
+   "name": "CRSH",
+   "note": 49,
+   "layers": [
+    [
+     0,
+     "crash.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 2,
+   "delay_send": 0.0,
+   "reverb_send": 0.25
+  },
+  {
+   "name": "COWB",
+   "note": 56,
+   "layers": [
+    [
+     0,
+     "cowb.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.12,
+   "reverb_send": 0.0
+  },
+  {
+   "name": "SHKR",
+   "note": 70,
+   "layers": [
+    [
+     0,
+     "shkr.wav"
+    ]
+   ],
+   "choke": 0,
+   "group": 0,
+   "delay_send": 0.0,
+   "reverb_send": 0.0
+  }
+ ]
+}
