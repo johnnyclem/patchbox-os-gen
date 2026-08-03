@@ -196,6 +196,24 @@ install -d "${ROOTFS_DIR}/usr/local/sbin"
 install -m 755 files/patchbox-fix-hyperpixel4 \
 	"${ROOTFS_DIR}/usr/local/sbin/patchbox-fix-hyperpixel4"
 
+# Pi 5 DRM: HyperPixel DPI is often not card0 (HDMI/writeback take lower
+# indices). Without SDL_KMSDRM_DEVICE_INDEX pygame fails with
+# "kmsdrm not available" while the console still paints on DPI.
+# Index is probed at first boot by patchbox-fix-hyperpixel4 --probe-kms;
+# default 2 matches current Pi 5 Bookworm (card0/1 HDMI, card2 DPI).
+install -d "${ROOTFS_DIR}/etc/systemd/system/rk00pi.service.d"
+cat > "${ROOTFS_DIR}/etc/systemd/system/rk00pi.service.d/30-hyperpixel-kms.conf" <<'EOF'
+[Service]
+# Pi 5 + HyperPixel: DPI is typically /dev/dri/card2
+Environment=SDL_KMSDRM_DEVICE_INDEX=2
+EOF
+# Same for other ranger kiosk units if present later
+for unit in chordranger midiranger; do
+	install -d "${ROOTFS_DIR}/etc/systemd/system/${unit}.service.d"
+	cp "${ROOTFS_DIR}/etc/systemd/system/rk00pi.service.d/30-hyperpixel-kms.conf" \
+		"${ROOTFS_DIR}/etc/systemd/system/${unit}.service.d/30-hyperpixel-kms.conf"
+done
+
 # LightDM stay-awake (if desktop is used)
 LIGHTDM="${ROOTFS_DIR}/etc/lightdm/lightdm.conf"
 if [ -f "${LIGHTDM}" ]; then
