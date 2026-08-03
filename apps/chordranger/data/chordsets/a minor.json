@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "name": "A MINOR",
+  "root": 9,
+  "scale": "minor",
+  "author": "",
+  "pads": [
+    {
+      "root": 9,
+      "quality": "min"
+    },
+    {
+      "root": 11,
+      "quality": "dim"
+    },
+    {
+      "root": 0,
+      "quality": "maj"
+    },
+    {
+      "root": 2,
+      "quality": "min"
+    },
+    {
+      "root": 4,
+      "quality": "min"
+    },
+    {
+      "root": 5,
+      "quality": "maj"
+    },
+    {
+      "root": 7,
+      "quality": "maj"
+    },
+    {
+      "root": 11,
+      "quality": "dom7"
+    },
+    {
+      "root": 2,
+      "quality": "maj"
+    },
+    {
+      "root": 7,
+      "quality": "maj"
+    },
+    {
+      "root": 9,
+      "quality": "sus4"
+    },
+    {
+      "root": 4,
+      "quality": "dom7"
+    }
+  ]
+}

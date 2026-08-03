@@ -78,6 +78,7 @@ kmsdrm fails with `pygame.error: kmsdrm not available`.
 | `08-install-waveshare-dpi` | off | GPIO DPI 640×480 (legacy) |
 | `09-hdmi-ultrawide` | **on** | HDMI CVT + cmdline + touch + docs |
 | `10-install-rk00pi` | **on** | **Main app** + The Button bridge from `RK-00pi` |
+| `13-install-chordranger` | **on** (unit off) | **ChordRanger** from `apps/chordranger` — installed, not enabled |
 
 ### RK-00pi layout on the image
 
@@ -102,6 +103,87 @@ kmsdrm fails with `pygame.error: kmsdrm not available`.
 | other gestures | `nothing` | Safe defaults; rebind in `[button.map]` |
 
 Safety net: if the instrument is not listening and the user holds past ~7 s, `rk00pi_hold.sh` still falls through to `shutdown` so a crashed unit is never stranded.
+
+---
+
+## ChordRanger — second app (2026-08-02)
+
+`apps/chordranger` in **this** repo (not a submodule). A chord-first backing
+band: twelve chord pads (Chordcat), a six-section auto-accompaniment with
+fills on the bar line (Yamaha QY), and an independent bass engine with its own
+voicing dial (Orchid ORC-1). Panel is the same 1280×400 bar, same light
+industrial look, same rails.
+
+Docs: [`apps/chordranger/README.md`](apps/chordranger/README.md) ·
+[`docs/USER.md`](apps/chordranger/docs/USER.md) ·
+[`docs/ARCHITECTURE.md`](apps/chordranger/docs/ARCHITECTURE.md) ·
+[`docs/deploy.md`](apps/chordranger/docs/deploy.md)
+
+### One panel, two apps
+
+Both render through SDL `kmsdrm`, so exactly one may run. Enforced three ways
+so the unit can never boot dark because they raced for DRM master:
+
+* `chordranger.service` declares `Conflicts=rk00pi.service`
+* the stage only enables ChordRanger's unit under `ENABLE_CHORDRANGER_SERVICE=1`, and disables `rk00pi.service` when it does
+* `patchbox-chordranger enable` / `disable` swaps them live, including the `/etc/pisound.conf` button map (backed up to `.chordranger.bak`, restored on `disable`)
+
+```bash
+patchbox-chordranger status         # which app owns the panel
+sudo patchbox-chordranger enable    # ChordRanger now and on next boot
+sudo patchbox-chordranger disable   # back to RK-00pi
+```
+
+### Layout on the image
+
+| Path | Purpose |
+|------|---------|
+| `/opt/chordranger/` | app + venv |
+| `/var/lib/chordranger/` | projects (`.crproj`), chordsets, styles, presets |
+| `/etc/chordranger/config.toml` | panel size, paths, MIDI, `[button.map]` |
+| `/run/chordranger/button.sock` | button socket (tmpfs, per boot) |
+| `/usr/local/bin/chordranger-btn` | stdlib client the pisound scripts call |
+| `/usr/local/bin/patchbox-chordranger` | status / enable / disable / button / logs |
+
+### The Button — ChordRanger gestures
+
+| Gesture | Action |
+|---------|--------|
+| 1 click | `play_stop` |
+| 2 clicks | `record_toggle` (pad taps write to the chord track) |
+| 3 clicks | `next_section` |
+| hold ~1 s | `save_project` |
+| hold ~3 s | `next_style` |
+| hold ~5 s | `panic` |
+
+Same socket shape as RK-00pi's on purpose, and the same ≥7 s fall-through to
+`shutdown` when nothing is listening.
+
+### Build toggles
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `ENABLE_CHORDRANGER` | **1** | install to `/opt/chordranger` |
+| `ENABLE_CHORDRANGER_SERVICE` | **0** | boot ChordRanger instead of RK-00pi |
+| `CHORDRANGER_WIDTH` / `HEIGHT` | (panel dims) | HyperPixel dims when `ENABLE_HYPERPIXEL4=1`, else HDMI |
+| `CHORDRANGER_USER` | `chordranger` | service user |
+
+### Tests
+
+`cd apps/chordranger && python -m pytest -q` — everything runs headless (SDL
+dummy driver, a capture MIDI backend, a fake clock). `python
+bench/render_panel.py docs/img` regenerates the screenshots in the docs.
+
+Panel geometry follows the same resolution order as `10-install-rk00pi`, so
+both hardware profiles work: the 1280×400 bar gets side rails, the 800×480
+HyperPixel and the 480×800 4" get a stacked top band and bottom tabs. The
+Pisound button bridge is installed either way but only does anything on a rig
+that has the board — with Pisound parked in Profile A, every gesture has an
+on-screen equivalent and nothing is lost.
+
+Not yet verified on hardware: touch on the real ElecLab panel, MIDI DIN
+output, and the button under a live `pisound-btn`. Same on-device checklist as
+RK-00pi applies — the `input` group is the usual culprit.
 
 Update submodule then rebuild:
 
@@ -299,9 +381,11 @@ ssh patch@patchbox.local 'sudo install -m 644 /tmp/app.py /opt/rk00pi/gui/app.py
 config
 .gitmodules
 RK-00pi/                          # submodule (main app)
+apps/chordranger/                 # second app (in-repo, not a submodule)
 stage3/02-install-pisound/
 stage3/09-hdmi-ultrawide/
 stage3/10-install-rk00pi/         # bake app into image
+stage3/13-install-chordranger/    # bake ChordRanger into image
 HANDOFF.md
 deploy/image_*.zip                # after successful build
 ```

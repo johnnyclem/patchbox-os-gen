@@ -47,6 +47,21 @@ RK00PI_HUB_PRESET="${RK00PI_HUB_PRESET:-pimidi-2x2}"
 RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
 
+# ChordRanger — second appliance app (apps/chordranger in this repo).
+# Chord pads + QY-style backing band + Orchid-style bass engine.
+#
+# Installed by default, NOT enabled by default: ChordRanger and RK-00pi both
+# take the panel under SDL kmsdrm and only one can have it. The image ships
+# both and boots whichever unit is enabled; swap on the device with
+#   sudo patchbox-chordranger enable   /   disable
+# To build an image that boots ChordRanger instead, set
+#   ENABLE_CHORDRANGER_SERVICE=1   (the stage disables rk00pi.service for you)
+ENABLE_CHORDRANGER="${ENABLE_CHORDRANGER:-1}"
+ENABLE_CHORDRANGER_SERVICE="${ENABLE_CHORDRANGER_SERVICE:-0}"
+# Empty → HyperPixel dims when ENABLE_HYPERPIXEL4=1, else HDMI dims
+CHORDRANGER_WIDTH="${CHORDRANGER_WIDTH:-}"
+CHORDRANGER_HEIGHT="${CHORDRANGER_HEIGHT:-}"
+
 # Off: Waveshare GPIO DPI (legacy)
 ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"
 

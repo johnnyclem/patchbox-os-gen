@@ -1,0 +1,137 @@
+"""The screen protocol.
+
+A screen turns touches into ``Command`` values and renders the latest
+``EngineSnapshot``. It never holds the engine, never mutates a project, and
+keeps nothing authoritative — everything it draws came from the last
+``update``. Navigation and file work are not engine state, so they go through
+the ``Host`` the App passes in rather than through commands.
+"""
+from __future__ import annotations
+
+from typing import Protocol
+
+import pygame
+
+from core.commands import EngineSnapshot
+from gui.widgets import HitMap, RepeatRamp
+
+LONG_PRESS_MS = 450
+
+
+class Host(Protocol):
+    """The App, as a screen sees it."""
+
+    def now_ms(self) -> int: ...
+    def set_tab(self, name: str) -> None: ...
+    def message(self, text: str) -> None: ...
+    def save_project(self) -> None: ...
+    def load_project(self, index: int) -> None: ...
+    def new_project(self) -> None: ...
+    def save_chordset(self) -> None: ...
+    def load_chordset(self, index: int) -> None: ...
+    def projects(self) -> tuple: ...
+    def chordsets(self) -> tuple: ...
+    def styles(self) -> tuple: ...
+    def midi_ports(self) -> tuple: ...
+    def bind_output(self, name: str) -> None: ...
+    def set_theme(self, name: str) -> None: ...
+    def edit_target(self) -> int: ...
+    def set_edit_target(self, index: int) -> None: ...
+
+
+class Screen:
+    """Base class: press tracking, hold-to-repeat, no-op defaults."""
+
+    #: Shown on the tab rail.
+    title = "SCREEN"
+
+    def __init__(self, host: Host, rect: pygame.Rect) -> None:
+        self.host = host
+        self.rect = rect
+        self.hits = HitMap()
+        self.snapshot: EngineSnapshot | None = None
+        self._pressed: str | None = None
+        self._press_ms = 0
+        self._ramp = RepeatRamp()
+
+    # --- protocol -------------------------------------------------------------
+    def handle(self, event: pygame.event.Event) -> list:
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            self._pressed = self.hits.hit(event.pos)
+            self._press_ms = self.host.now_ms()
+            self._ramp.reset()
+            return self.on_press(self._pressed) if self._pressed else []
+        if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+            key, self._pressed = self._pressed, None
+            if key is None:
+                return []
+            if self.hits.hit(event.pos) != key:
+                # The finger slid off: no action, but the control still needs
+                # its release hook or a held pad never lifts.
+                return self.on_release(key, moved_away=True)
+            if self._ramp.count and self.repeats(key):
+                return self.on_release(key)     # the hold stepped; lift is free
+            held = self.host.now_ms() - self._press_ms
+            actions = (self.on_long_press(key) if held >= LONG_PRESS_MS
+                       else self.on_tap(key))
+            return actions + self.on_release(key)
+        return []
+
+    def poll(self) -> list:
+        """Ticked once a frame for the visible screen only."""
+        key = self._pressed
+        if key is None or not self.repeats(key):
+            return []
+        steps = self._ramp.due(self.host.now_ms(), self._press_ms)
+        return self.on_repeat(key, steps) if steps else []
+
+    def cancel_press(self) -> list:
+        """Drop a held control without acting on it — the App calls this when
+        a tab switch happens under a finger, which would otherwise leave a pad
+        latched and repeating into a hidden screen."""
+        key, self._pressed = self._pressed, None
+        self._ramp.reset()
+        return self.on_release(key, moved_away=True) if key else []
+
+    def update(self, snapshot: EngineSnapshot) -> None:
+        self.snapshot = snapshot
+
+    def draw(self, surface: pygame.Surface) -> None:
+        raise NotImplementedError
+
+    # --- hooks ----------------------------------------------------------------
+    def on_press(self, key: str) -> list:
+        return []
+
+    def on_tap(self, key: str) -> list:
+        return []
+
+    def on_long_press(self, key: str) -> list:
+        """Default: a long press is still a tap. Only the pads differ."""
+        return self.on_tap(key)
+
+    def on_release(self, key: str, moved_away: bool = False) -> list:
+        return []
+
+    def repeats(self, key: str) -> bool:
+        """Does holding this key ramp? Nothing does by default.
+
+        Opting in is per key rather than per screen because the two kinds sit
+        on the same row: a numeric field wants a ramp, the toggle beside it
+        would flap at 20 Hz, and the enum next to that would spin forever.
+        """
+        return False
+
+    def on_repeat(self, key: str, steps: int) -> list:
+        return []
+
+    # --- helpers --------------------------------------------------------------
+    def is_pressed(self, key: str) -> bool:
+        return self._pressed == key
+
+    def held_ms(self) -> int:
+        return self.host.now_ms() - self._press_ms if self._pressed else 0
+
+    def begin(self) -> None:
+        """Clear the hit map before a frame's controls are registered."""
+        self.hits.clear()

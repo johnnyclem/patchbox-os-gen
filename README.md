@@ -448,6 +448,30 @@ Display mode is forced via `hdmi_cvt` / `hdmi_mode=87` and cmdline
 Parked options (still in tree, off by default): Waveshare GPIO DPI, Inky
 e-paper, RaspiAudio I2S — each conflicts with Pisound and/or the chosen UI.
 
+### Second app: ChordRanger
+
+[`apps/chordranger`](apps/chordranger/README.md) is a chord-first backing band
+for the same hardware — twelve chord pads (Chordcat), a six-section
+auto-accompaniment with fills that fire on the bar line (Yamaha QY), and a
+bass engine with its own voicing dial that is independent of the chord part
+(Orchid ORC-1). It lives in this repo rather than a submodule, and
+`stage3/13-install-chordranger` bakes it into `/opt/chordranger` with
+`chordranger.service`, `/etc/chordranger/config.toml` and a `chordranger-btn`
+bridge for The Button.
+
+ChordRanger and RK-00pi both render through SDL `kmsdrm` and there is one
+panel, so **exactly one runs at a time**. The image ships both; the unit is
+installed disabled by default and swapped on the device:
+
+```bash
+patchbox-chordranger status         # which app owns the panel
+sudo patchbox-chordranger enable    # ChordRanger, now and on next boot
+sudo patchbox-chordranger disable   # hand it back to RK-00pi
+```
+
+Build an image that boots ChordRanger instead with
+`ENABLE_CHORDRANGER_SERVICE=1` — the stage disables `rk00pi.service` for you.
+
 ### Audio / MIDI (this release)
 
 | Path | Status |
@@ -465,6 +489,8 @@ e-paper, RaspiAudio I2S — each conflicts with Pisound and/or the chosen UI.
 | `ENABLE_RK00PI` | `1` | Install RK-00pi from submodule |
 | `ENABLE_RK00PI_SERVICE` | `1` | Enable kiosk unit at boot |
 | `ENABLE_RK00PI_BUTTON` | `1` | Wire PiSound Button → RK-00pi gestures |
+| `ENABLE_CHORDRANGER` | `1` | Install ChordRanger from `apps/chordranger` |
+| `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi |
 | `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Panel geometry |
 | `ENABLE_WAVESHARE_DPI` | `0` | GPIO DPI (conflicts with Pisound) |
