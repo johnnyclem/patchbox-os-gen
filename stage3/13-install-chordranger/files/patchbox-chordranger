@@ -1,185 +1,46 @@
 #!/bin/bash
-# patchbox-chordranger — status, and swap which app owns the panel.
+# patchbox-chordranger — kept for muscle memory; the work moved to
+# patchbox-app (stage3/14), the one switcher that knows about *all* the
+# kiosk apps. This wrapper translates the old verbs:
 #
-# ChordRanger and RK-00pi both render through SDL kmsdrm, and there is one
-# display. Enabling either one here stands the other down, so the machine can
-# never end up in the state where both units are enabled and the panel is dark
-# because they raced for the DRM master.
+#   patchbox-chordranger status    ->  patchbox-app status
+#   patchbox-chordranger enable    ->  patchbox-app enable chordranger
+#   patchbox-chordranger disable   ->  patchbox-app disable
+#   patchbox-chordranger button    ->  patchbox-app button chordranger
+#   patchbox-chordranger logs      ->  patchbox-app logs chordranger
+#
+# Delegation matters beyond convenience: patchbox-app keeps the mutual-
+# exclusion picture for all eight kiosk apps and owns the single
+# pisound.conf backup slot, and two tools each keeping their own idea of
+# "the base state" is how a button map gets eaten.
 set -euo pipefail
 
-PREFIX=/opt/chordranger
-DATA_DIR=/var/lib/chordranger
-CONFIG=/etc/chordranger/config.toml
-SOCKET=/run/chordranger/button.sock
-PISOUND_CONF=/etc/pisound.conf
-SCRIPTS=/usr/local/pisound/scripts/pisound-btn
+APP_SWITCHER=/usr/local/bin/patchbox-app
 
 usage() {
-	cat <<'EOF'
-usage: patchbox-chordranger [status|enable|disable|button|logs]
-
-  status    what is installed and which app owns the panel (default)
-  enable    make ChordRanger the app that boots, and start it now  [root]
-  disable   hand the panel back to RK-00pi                         [root]
-  button    map the PiSound button to ChordRanger                  [root]
-  logs      tail the service journal
-EOF
+	echo "usage: patchbox-chordranger [status|enable|disable|button|logs]"
+	echo "(a thin wrapper over: patchbox-app ... chordranger)"
 }
 
-need_root() {
-	if [ "$(id -u)" -ne 0 ]; then
-		echo "this needs root: sudo patchbox-chordranger $1" >&2
-		exit 1
-	fi
-}
-
-unit_state() { # $1 unit
-	printf '%s / %s' \
-		"$(systemctl is-enabled "$1" 2>/dev/null || echo unknown)" \
-		"$(systemctl is-active "$1" 2>/dev/null || echo unknown)"
-}
-
-set_pisound_action() { # $1 action id, $2 script
-	if grep -qE "^$1[[:space:]]" "${PISOUND_CONF}" 2>/dev/null; then
-		sed -i "s|^$1[[:space:]].*|$1 $2|" "${PISOUND_CONF}"
-	else
-		printf '%s %s\n' "$1" "$2" >> "${PISOUND_CONF}"
-	fi
-}
-
-cmd_status() {
-	echo "=== ChordRanger ==="
-	echo "date: $(date -Is 2>/dev/null || date)"
-	echo
-	if [ -d "${PREFIX}" ]; then
-		echo "install: ${PREFIX} present"
-		[ -f "${PREFIX}/.patchbox-source-commit" ] &&
-			echo "commit:  $(cat "${PREFIX}/.patchbox-source-commit")"
-		if [ -x "${PREFIX}/venv/bin/python" ]; then
-			echo "python:  $("${PREFIX}/venv/bin/python" -V 2>&1)"
-			"${PREFIX}/venv/bin/python" - <<'PY' 2>/dev/null || echo "  (import check unavailable)"
-import importlib
-for module in ("pygame", "mido", "rtmidi"):
-    try:
-        importlib.import_module(module)
-        print(f"  ok  {module}")
-    except Exception as exc:
-        print(f"  --  {module}: {exc.__class__.__name__}")
-PY
-		else
-			echo "python:  MISSING venv at ${PREFIX}/venv"
-		fi
-	else
-		echo "install: ${PREFIX} MISSING"
-	fi
-	echo
-	if [ -f "${CONFIG}" ]; then
-		echo "config:  ${CONFIG}"
-		grep -E '^(width|height|fullscreen|theme|data_dir|backend|out_port|clock_out|rt_priority|enabled|socket)' \
-			"${CONFIG}" 2>/dev/null | sed 's/^/  /' || true
-		if grep -q '^\[button\.map\]' "${CONFIG}" 2>/dev/null; then
-			echo "  [button.map]"
-			awk '/^\[button\.map\]/{p=1;next} /^\[/{p=0} p && /^[A-Z_]/{print "    "$0}' \
-				"${CONFIG}" 2>/dev/null || true
-		fi
-	else
-		echo "config:  missing"
-	fi
-	echo
-	echo "=== who owns the panel ==="
-	printf 'chordranger.service: %s\n' "$(unit_state chordranger.service)"
-	if systemctl cat rk00pi.service >/dev/null 2>&1; then
-		printf 'rk00pi.service:      %s\n' "$(unit_state rk00pi.service)"
-	else
-		echo "rk00pi.service:      not installed"
-	fi
-	if systemctl is-active --quiet chordranger.service &&
-		systemctl is-active --quiet rk00pi.service 2>/dev/null; then
-		echo "WARNING: both are running — one of them has a dark panel."
-		echo "         sudo patchbox-chordranger enable   (or disable)"
-	fi
-	echo
-	echo "=== The Button ==="
-	if [ -x /usr/local/bin/chordranger-btn ]; then
-		echo "client:  /usr/local/bin/chordranger-btn present"
-		if [ -S "${SOCKET}" ]; then
-			echo "socket:  ${SOCKET}"
-			echo "ping:    $(/usr/local/bin/chordranger-btn PING 2>&1 || true)"
-		else
-			echo "socket:  ${SOCKET} absent (service not running?)"
-		fi
-	else
-		echo "client:  chordranger-btn MISSING"
-	fi
-	if grep -q 'chordranger_click.sh' "${PISOUND_CONF}" 2>/dev/null; then
-		echo "map:     /etc/pisound.conf -> ChordRanger"
-	elif grep -q 'rk00pi_click.sh' "${PISOUND_CONF}" 2>/dev/null; then
-		echo "map:     /etc/pisound.conf -> RK-00pi"
-	else
-		echo "map:     /etc/pisound.conf -> pisound defaults"
-	fi
-	echo
-	echo "data:    ${DATA_DIR}"
-	[ -d "${DATA_DIR}/projects" ] &&
-		echo "projects: $(find "${DATA_DIR}/projects" -name '*.crproj' 2>/dev/null | wc -l)"
-}
-
-cmd_button() {
-	need_root button
-	if [ ! -x /usr/local/bin/chordranger-btn ]; then
-		echo "chordranger-btn is not installed" >&2
-		exit 1
-	fi
-	[ -f "${PISOUND_CONF}" ] || : > "${PISOUND_CONF}"
-	# Keep the first pre-ChordRanger map so `disable` can put it back.
-	[ -f "${PISOUND_CONF}.chordranger.bak" ] ||
-		cp "${PISOUND_CONF}" "${PISOUND_CONF}.chordranger.bak"
-	for action in CLICK_1 CLICK_2 CLICK_3 CLICK_OTHER; do
-		set_pisound_action "${action}" "${SCRIPTS}/chordranger_click.sh"
-	done
-	for action in HOLD_1S HOLD_3S HOLD_5S HOLD_OTHER; do
-		set_pisound_action "${action}" "${SCRIPTS}/chordranger_hold.sh"
-	done
-	systemctl restart pisound-btn.service 2>/dev/null || true
-	echo "button mapped to ChordRanger (live map: ${CONFIG} [button.map])"
-}
-
-cmd_enable() {
-	need_root enable
-	systemctl stop rk00pi.service 2>/dev/null || true
-	systemctl disable rk00pi.service 2>/dev/null || true
-	systemctl enable chordranger.service
-	cmd_button
-	systemctl restart chordranger.service
-	echo
-	echo "ChordRanger owns the panel. RK-00pi is stopped and disabled."
-	echo "Undo with: sudo patchbox-chordranger disable"
-}
-
-cmd_disable() {
-	need_root disable
-	systemctl stop chordranger.service 2>/dev/null || true
-	systemctl disable chordranger.service 2>/dev/null || true
-	if [ -f "${PISOUND_CONF}.chordranger.bak" ]; then
-		cp "${PISOUND_CONF}.chordranger.bak" "${PISOUND_CONF}"
-		systemctl restart pisound-btn.service 2>/dev/null || true
-		echo "button map restored from ${PISOUND_CONF}.chordranger.bak"
-	fi
-	if systemctl cat rk00pi.service >/dev/null 2>&1; then
-		systemctl enable rk00pi.service
-		systemctl start rk00pi.service
-		echo "RK-00pi owns the panel again."
-	else
-		echo "ChordRanger disabled. RK-00pi is not installed on this image."
-	fi
-}
+if [ ! -x "${APP_SWITCHER}" ]; then
+	echo "patchbox-chordranger: ${APP_SWITCHER} is missing." >&2
+	echo "This image installed ChordRanger without the Ranger suite" >&2
+	echo "switcher (stage3/14). Reinstall with that stage enabled, or" >&2
+	echo "drive systemd directly:" >&2
+	echo "  sudo systemctl disable --now rk00pi.service" >&2
+	echo "  sudo systemctl enable --now chordranger.service" >&2
+	exit 1
+fi
 
 case "${1:-status}" in
-	status) cmd_status ;;
-	enable) cmd_enable ;;
-	disable) cmd_disable ;;
-	button) cmd_button ;;
-	logs) journalctl -u chordranger -b -n "${2:-80}" --no-pager ;;
+	status) exec "${APP_SWITCHER}" status ;;
+	enable) exec "${APP_SWITCHER}" enable chordranger ;;
+	disable) exec "${APP_SWITCHER}" disable ;;
+	button) exec "${APP_SWITCHER}" button chordranger ;;
+	logs) exec "${APP_SWITCHER}" logs chordranger ;;
 	-h | --help | help) usage ;;
-	*) usage; exit 2 ;;
+	*)
+		usage >&2
+		exit 2
+		;;
 esac

@@ -18,7 +18,13 @@ import logging
 import sys
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+_ROOT = Path(__file__).resolve().parent
+sys.path.insert(0, str(_ROOT))
+# On the device rangerkit is vendored beside core/; in the repo it lives one
+# level up, in apps/. Prefer the vendored copy, fall back to the repo layout.
+import importlib.util
+if importlib.util.find_spec("rangerkit") is None:
+    sys.path.insert(1, str(_ROOT.parent))
 
 log = logging.getLogger("chordranger.main")
 

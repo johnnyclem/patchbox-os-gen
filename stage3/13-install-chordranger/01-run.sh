@@ -57,6 +57,14 @@ if command -v rsync >/dev/null 2>&1; then
 		--exclude '.pytest_cache/' \
 		--exclude 'data/projects/' \
 		"${CR_SRC}/" "${ROOTFS_DIR}${PREFIX}/"
+	# ChordRanger's theory/chords/events/clock and the GUI kit are shims
+	# over rangerkit since suite Phase 7 — vendor a frozen copy beside
+	# core/, the same way every sibling app carries its own.
+	rsync -a --delete \
+		--exclude '__pycache__/' \
+		--exclude '*.pyc' \
+		--exclude '.pytest_cache/' \
+		"${CR_SRC}/../rangerkit/" "${ROOTFS_DIR}${PREFIX}/rangerkit/"
 else
 	# Fallback: selective copy (rsync is in 00-packages for the rootfs, and
 	# a macOS host building under Docker may not have it either).
@@ -69,6 +77,8 @@ else
 			cp -a "${CR_SRC}/${d}" "${ROOTFS_DIR}${PREFIX}/"
 		fi
 	done
+	rm -rf "${ROOTFS_DIR}${PREFIX}/rangerkit"
+	cp -a "${CR_SRC}/../rangerkit" "${ROOTFS_DIR}${PREFIX}/rangerkit"
 	find "${ROOTFS_DIR}${PREFIX}" -type d -name '__pycache__' -exec rm -rf {} + 2>/dev/null || true
 fi
 
@@ -227,6 +237,8 @@ if ! sudo -u "\${APP_USER}" "\${PIP}" install --no-cache-dir -r "\${PREFIX}/requ
 		sudo -u "\${APP_USER}" "\${PIP}" install --no-cache-dir "\${package}" || \
 			echo "warning: optional \${package} not installed — MIDI out will be silent"
 	done
+	rm -rf "${ROOTFS_DIR}${PREFIX}/rangerkit"
+	cp -a "${CR_SRC}/../rangerkit" "${ROOTFS_DIR}${PREFIX}/rangerkit"
 fi
 
 # Smoke test the import path while we still have a build log to read it in.
