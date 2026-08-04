@@ -162,15 +162,12 @@ Three things now guard against it:
 
 On the unit, read-only: `patchbox-rk00pi-autohub`. To fix by hand:
 `sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi`, or
-**Set → I/O → MIDI → DIN** on the panel.
+on the panel **I/O → PORTS → AUTO FIT** (also DIN device + per-port rows).
 
-Known app-side gap (RK-00pi submodule, not fixed here): `[midi] din_client`
-in `/etc/rk00pi/config.toml` re-points DIN endpoints via
-`core/prefs.py:retarget_din`, which changes `client_name` and leaves
-`port_name` alone. Against a preset that pins a port name (`pimidi-2x2` pins
-`pimidi-a`/`pimidi-b`) the endpoint still cannot match, so that knob does not
-rescue a Pisound rig. The panel's Set → I/O → MIDI path clears `port_name`
-and does work.
+App-side (RK-00pi): the Hub tab and Set → I/O are merged into one **I/O** tab
+(PORTS · ROUTE · AUDIO). Port matching no longer collapses a 2×2 PiMIDI onto
+one jack when match strings are client-only; `retarget_din` pins `pimidi-a`/`b`
+from endpoint id suffixes when needed.
 
 ### The Button — default gestures
 
