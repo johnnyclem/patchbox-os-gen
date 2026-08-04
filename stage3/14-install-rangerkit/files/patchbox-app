@@ -6,7 +6,7 @@
 # can never end up with two units enabled and a dark panel because they
 # raced for the DRM master.
 #
-# Successor to patchbox-chordranger (which still works for its two apps):
+# Successor to patchbox-chordranger (now a thin wrapper over this tool):
 # this one knows the whole kiosk family, from the same list the install
 # stages render each unit's Conflicts= line from.
 set -euo pipefail

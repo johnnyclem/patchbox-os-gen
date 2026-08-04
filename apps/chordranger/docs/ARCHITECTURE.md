@@ -220,12 +220,16 @@ RK-00pi and ChordRanger share no code. They share conventions — `/opt/<app>`,
 an operator who knows one knows the other.
 
 The six newer Ranger apps (MidiRanger, GenRanger, PhraseRanger, SceneRanger,
-GrooveRanger, SynthRanger) *do* share code: `apps/rangerkit`, whose theory,
-clock, MIDI and engine skeleton were extracted from this app. ChordRanger
-predates the kit and deliberately remains self-contained — it stays on its
-own copies until a deliberate migration, so nothing here moves under a
-shipped instrument's feet. The family-wide switcher `patchbox-app` also knows
-this app; `patchbox-chordranger` keeps working unchanged.
+GrooveRanger, SynthRanger) share `apps/rangerkit`, whose theory, clock, MIDI
+and engine skeleton were extracted from this app — and since suite Phase 7
+ChordRanger consumes its own donation back: `core/theory`, `core/chords`,
+`core/events`, `core/clock`, `gui/theme` and `gui/widgets` are re-export
+shims over rangerkit (the install stage vendors a frozen copy beside
+`core/`, like every sibling). The modules that genuinely diverged —
+`midi_io`, `button`, `engine` — stay ChordRanger's own; the migration
+happened behind this app's unchanged test suite. `patchbox-chordranger`
+remains for muscle memory as a thin wrapper over the family-wide
+`patchbox-app`.
 
 ---
 
