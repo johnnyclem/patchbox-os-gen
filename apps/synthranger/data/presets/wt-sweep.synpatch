@@ -1,0 +1,4 @@
+{"name": "WT SWEEP", "engine": "wavetable", "wt_position": 0.2,
+ "detune_cents": 6.0, "cutoff": 0.75, "resonance": 0.2,
+ "amp_env": [0.05, 0.4, 0.6, 0.8], "lfo_rate": 0.15, "lfo_depth": 0.8,
+ "lfo_dest": "wt_position", "chorus": 0.35, "delay_send": 0.2}

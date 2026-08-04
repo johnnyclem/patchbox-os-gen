@@ -1,0 +1,4 @@
+{"name": "FM GROWL", "engine": "fm", "fm_ratio": 0.5, "fm_index": 1.8,
+ "cutoff": 0.5, "resonance": 0.4, "filter_env": 0.35,
+ "amp_env": [0.005, 0.3, 0.7, 0.25], "lfo_rate": 5.5, "lfo_depth": 0.5,
+ "lfo_dest": "fm_index", "drive": 0.35}

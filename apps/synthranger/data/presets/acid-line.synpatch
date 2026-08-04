@@ -1,0 +1,4 @@
+{"name": "ACID LINE", "engine": "va", "shape": "saw", "detune_cents": 0.0,
+ "cutoff": 0.35, "resonance": 0.85, "filter_env": 0.55,
+ "amp_env": [0.002, 0.18, 0.0, 0.12], "mod_env": [0.002, 0.16, 0.0, 0.2],
+ "drive": 0.45, "delay_send": 0.2}

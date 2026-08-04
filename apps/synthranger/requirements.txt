@@ -1,0 +1,12 @@
+# SynthRanger runtime dependencies (floors, not pins — see
+# requirements.lock for what the image actually installs).
+#
+# The engine (routing, parts, presets) is stdlib only plus the vendored
+# rangerkit; numpy is the whole DSP layer (oscillators, filters, effects);
+# sounddevice is only the device layer, and its absence degrades to the
+# silent null backend (which is exactly what CI runs).
+pygame>=2.5          # the panel (SDL2 KMS/DRM kiosk)
+mido>=1.3            # MIDI message model
+python-rtmidi>=1.5   # mido's ALSA sequencer backend
+numpy>=1.24          # the DSP layer
+sounddevice>=0.4     # PortAudio out for the internal endpoint

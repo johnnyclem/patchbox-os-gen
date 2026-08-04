@@ -1,0 +1,4 @@
+{"name": "BRASS STAB", "engine": "va", "shape": "square",
+ "detune_cents": 12.0, "cutoff": 0.55, "resonance": 0.3,
+ "filter_env": 0.45, "amp_env": [0.01, 0.3, 0.55, 0.2],
+ "mod_env": [0.02, 0.25, 0.2, 0.3], "drive": 0.2, "chorus": 0.2}
