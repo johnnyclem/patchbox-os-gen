@@ -220,3 +220,30 @@ restores RK-00pi + base button map.
   `stage3/14-install-rangerkit/files/patchbox-app`
 - `.github/workflows/chordranger.yml` — template for `.github/workflows/ranger-apps.yml`
 - top-level `config` — new toggles (`RANGER_BOOT_APP`, six `ENABLE_<APP>`)
+
+
+## Stretch queue (Phase 8+, one PR each)
+
+Every item the shipped apps listed under "Deferred (deliberately)", queued
+in build order. Items the PRDs marked out of scope stay out (PhraseRanger
+piano-roll editing and audio warping; SceneRanger linear-DAW arrange and
+audio input).
+
+| # | App | Item |
+|---|-----|------|
+| S1 | GrooveRanger | Damped reverb (shared `rangerkit.audio.dsp.OnePole`) |
+| S2 | GrooveRanger | Sidechain compression on the bus |
+| S3 | GrooveRanger | Per-step pad polyphony (step stacks) |
+| S4 | GrooveRanger | Kit editing beyond continuous params + kit save |
+| S5 | GrooveRanger | Sample recording + resampling into kits |
+| S6 | GenRanger | Per-step micro-timing |
+| S7 | GenRanger | Markov learning from live input |
+| S8 | GenRanger | Markov order > 2 (with backoff) |
+| S9 | GenRanger | MAP node-graph view |
+| S10 | PhraseRanger | Theory-aware cruise suggestions |
+| S11 | SceneRanger | MIDI-mapped grid controllers (+ LED feedback) |
+| S12 | SynthRanger | Oscillator sync / ring mod / noise |
+| S13 | SynthRanger | Per-voice glide |
+| S14 | SynthRanger | Effects beyond drive/chorus/delay (shared reverb + phaser) |
+| S15 | SynthRanger | MPE |
+| S16 | SynthRanger | C accelerator: ladder filter + the 16×8 stretch |

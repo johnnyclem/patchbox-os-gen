@@ -36,7 +36,7 @@ the whole audio feature set as plain MIDI:
   immediately before the hit, consumed by the sampler's next note-on on
   that channel;
 - mixer levels are CC 7 per pad channel; channel 15 is the master bus
-  (74 filter, 85 delay division, 91 reverb, 7 level);
+  (74 filter, 85 delay division, 91 reverb, 92 damping, 7 level);
 - chokes and mutes are the release book doing what it always does.
 
 The engine never holds the sampler. Every fact the sampler needs either
@@ -63,7 +63,10 @@ one-knob filter is a block FIR with carried tail; delay and every reverb
 stage keep loop times longer than one 256-frame block, so feedback only
 reads earlier blocks and everything vectorizes. 48 kHz float32 internal —
 the honesty contract from suite Phase 4 — and the whole bus is documented
-lo-fi (undamped combs, hard delay retune) rather than accidentally so.
+lo-fi (hard delay retune) rather than accidentally so. Since stretch S1
+the combs are dampable through the shared closed-form one-pole
+(``rangerkit.audio.dsp``): still no per-sample Python, and damping 0 is
+a bit-exact bypass of the original tail.
 
 ## 6. What the tests assert
 
@@ -86,5 +89,6 @@ lo-fi (undamped combs, hard delay retune) rather than accidentally so.
 ## Deferred (deliberately)
 
 Sidechain compression on the bus, sample recording/resampling, per-step
-pad polyphony (a step is one hit), damped reverb (needs per-sample state),
-and kit editing beyond continuous params — kits are files.
+pad polyphony (a step is one hit), and kit editing beyond continuous
+params — kits are files. (Damped reverb shipped in stretch S1 via the
+shared closed-form one-pole.)

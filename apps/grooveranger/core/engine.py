@@ -41,7 +41,7 @@ from core.steps import PADS, Pattern, STEPS, cond_passes
 log = logging.getLogger("grooveranger.engine")
 
 CC_TUNE, CC_PAN, CC_FILTER = 16, 10, 74
-CC_LEVEL, CC_DELAY_DIV, CC_REVERB = 7, 85, 91
+CC_LEVEL, CC_DELAY_DIV, CC_REVERB, CC_DAMP = 7, 85, 91, 92
 MASTER_CHANNEL = 15
 
 
@@ -107,6 +107,8 @@ class GrooveRangerEngine(base.RangerEngine):
         self._cc(MASTER_CHANNEL, CC_DELAY_DIV, self.mixer.delay_div)
         self._cc(MASTER_CHANNEL, CC_REVERB,
                  int(round(self.mixer.reverb * 127)))
+        self._cc(MASTER_CHANNEL, CC_DAMP,
+                 int(round(self.mixer.damp * 127)))
 
     def _cc(self, channel: int, number: int, value: int) -> None:
         self.midi.send(INTERNAL, MidiEvent(
@@ -271,7 +273,8 @@ class GrooveRangerEngine(base.RangerEngine):
             mixer=cmd.MixerView(master=self.mixer.master,
                                 filter=self.mixer.filter,
                                 delay_div=self.mixer.delay_div,
-                                reverb=self.mixer.reverb),
+                                reverb=self.mixer.reverb,
+                                damp=self.mixer.damp),
             chain=tuple(tuple(entry) for entry in self.chain.entries),
             chain_on=self.chain.on, chain_position=self.chain.position,
             project_name=self.project.name,
@@ -441,7 +444,7 @@ def _h_mixer_level(engine, c: cmd.SetMixerLevel) -> None:
 
 
 def _h_master_field(engine, c: cmd.SetMasterField) -> None:
-    if c.name not in ("master", "filter", "delay_div", "reverb"):
+    if c.name not in ("master", "filter", "delay_div", "reverb", "damp"):
         log.warning("unknown master field %r — ignored", c.name)
         return
     engine.mixer = replace(engine.mixer, **{c.name: c.value}).normalised()
@@ -455,6 +458,9 @@ def _h_master_field(engine, c: cmd.SetMasterField) -> None:
     elif c.name == "reverb":
         engine._cc(MASTER_CHANNEL, CC_REVERB,
                    int(round(engine.mixer.reverb * 127)))
+    elif c.name == "damp":
+        engine._cc(MASTER_CHANNEL, CC_DAMP,
+                   int(round(engine.mixer.damp * 127)))
 
 
 def _h_chain_append(engine, c: cmd.ChainAppend) -> None:

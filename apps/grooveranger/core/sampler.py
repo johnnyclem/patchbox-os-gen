@@ -38,7 +38,7 @@ MAX_VOICES = 32
 CHOKE_FADE = int(SAMPLE_RATE * 0.005)
 MASTER_CHANNEL = 15
 CC_TUNE, CC_PAN, CC_FILTER = 16, 10, 74
-CC_LEVEL, CC_DELAY_DIV, CC_REVERB = 7, 85, 91
+CC_LEVEL, CC_DELAY_DIV, CC_REVERB, CC_DAMP = 7, 85, 91, 92
 FILTER_STEPS = 16                # cutoff quantization for the FIR cache
 _MAX_KERNEL = 64
 
@@ -236,6 +236,8 @@ class Sampler:
                 self.fx.set_delay_division(value)
             elif number == CC_REVERB:
                 self.fx.set_reverb(value / 127.0)
+            elif number == CC_DAMP:
+                self.fx.set_damp(value / 127.0)
             return
         if not 0 <= channel < PADS:
             return
