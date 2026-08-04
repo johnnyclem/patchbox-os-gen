@@ -18,7 +18,7 @@ from rangerkit.gui.widgets import Stepper, button, column, row, \
     section_head, text
 
 STEPPED = ("addpt", "addps", "mfilt", "mdiv", "mverb",
-           "mdamp", "mlvl")
+           "mdamp", "mduck", "mlvl")
 ENTRIES_SHOWN = 8
 _DIV_NAMES = ("1/8", ".1/8", "1/4", "1/2")
 
@@ -80,6 +80,10 @@ class SongScreen(Screen):
             return [cmd.SetMasterField(
                 name="damp",
                 value=round(s.mixer.damp + 0.05 * direction, 3))]
+        if name == "mduck":
+            return [cmd.SetMasterField(
+                name="duck",
+                value=round(s.mixer.duck + 0.05 * direction, 3))]
         if name == "mlvl":
             return [cmd.SetMasterField(
                 name="master",
@@ -140,14 +144,18 @@ class SongScreen(Screen):
     def _bus(self, surface, rect, s) -> None:
         body = self._titled(surface, rect, "MASTER BUS · internal DAC")
         lines = column(body, 2, gap=5)
-        top = row(lines[0], 2, gap=4)
+        top = row(lines[0], 3, gap=4)
         Stepper("mfilt", "FILTER",
                 "OPEN" if 0.45 <= s.mixer.filter <= 0.55 else
-                f"{s.mixer.filter:.2f}", width=36).draw(
-            surface, self.hits, top[0], self._pressed, size=13)
+                f"{s.mixer.filter:.2f}", width=30).draw(
+            surface, self.hits, top[0], self._pressed, size=12)
         Stepper("mdiv", "DELAY", _DIV_NAMES[s.mixer.delay_div],
-                width=36).draw(surface, self.hits, top[1], self._pressed,
-                               size=13)
+                width=30).draw(surface, self.hits, top[1], self._pressed,
+                               size=12)
+        Stepper("mduck", "DUCK",
+                "—" if s.mixer.duck <= 0.0 else f"{s.mixer.duck:.2f}",
+                width=30).draw(surface, self.hits, top[2], self._pressed,
+                               size=12)
         bottom = row(lines[1], 3, gap=4)
         Stepper("mverb", "REVERB", f"{s.mixer.reverb:.2f}",
                 width=30).draw(surface, self.hits, bottom[0],

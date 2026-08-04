@@ -15,7 +15,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.0,
-   "reverb_send": 0.0
+   "reverb_send": 0.0,
+   "duck_key": true
   },
   {
    "name": "SNAR",
@@ -33,7 +34,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.0,
-   "reverb_send": 0.18
+   "reverb_send": 0.18,
+   "duck_key": false
   },
   {
    "name": "CLAP",
@@ -47,7 +49,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.1,
-   "reverb_send": 0.22
+   "reverb_send": 0.22,
+   "duck_key": false
   },
   {
    "name": "RIM",
@@ -61,7 +64,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.0,
-   "reverb_send": 0.12
+   "reverb_send": 0.12,
+   "duck_key": false
   },
   {
    "name": "CHAT",
@@ -75,7 +79,8 @@
    "choke": 1,
    "group": 1,
    "delay_send": 0.0,
-   "reverb_send": 0.0
+   "reverb_send": 0.0,
+   "duck_key": false
   },
   {
    "name": "OHAT",
@@ -89,7 +94,8 @@
    "choke": 1,
    "group": 1,
    "delay_send": 0.0,
-   "reverb_send": 0.1
+   "reverb_send": 0.1,
+   "duck_key": false
   },
   {
    "name": "LTOM",
@@ -103,7 +109,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.0,
-   "reverb_send": 0.0
+   "reverb_send": 0.0,
+   "duck_key": false
   },
   {
    "name": "HTOM",
@@ -117,7 +124,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.0,
-   "reverb_send": 0.0
+   "reverb_send": 0.0,
+   "duck_key": false
   },
   {
    "name": "RIDE",
@@ -131,7 +139,8 @@
    "choke": 0,
    "group": 2,
    "delay_send": 0.0,
-   "reverb_send": 0.15
+   "reverb_send": 0.15,
+   "duck_key": false
   },
   {
    "name": "CRSH",
@@ -145,7 +154,8 @@
    "choke": 0,
    "group": 2,
    "delay_send": 0.0,
-   "reverb_send": 0.25
+   "reverb_send": 0.25,
+   "duck_key": false
   },
   {
    "name": "COWB",
@@ -159,7 +169,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.12,
-   "reverb_send": 0.0
+   "reverb_send": 0.0,
+   "duck_key": false
   },
   {
    "name": "SHKR",
@@ -173,7 +184,8 @@
    "choke": 0,
    "group": 0,
    "delay_send": 0.0,
-   "reverb_send": 0.0
+   "reverb_send": 0.0,
+   "duck_key": false
   }
  ]
 }

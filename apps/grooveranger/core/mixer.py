@@ -27,6 +27,7 @@ class Mixer:
     delay_div: int = 2
     reverb: float = 0.3
     damp: float = 0.0            # reverb damping; 0 = the original tail
+    duck: float = 0.0            # sidechain depth on the returns
 
     def normalised(self) -> "Mixer":
         levels = tuple(max(0.0, min(LEVEL_MAX, float(v)))
@@ -38,7 +39,8 @@ class Mixer:
             filter=max(0.0, min(1.0, float(self.filter))),
             delay_div=max(0, min(3, int(self.delay_div))),
             reverb=max(0.0, min(1.0, float(self.reverb))),
-            damp=max(0.0, min(1.0, float(self.damp))))
+            damp=max(0.0, min(1.0, float(self.damp))),
+            duck=max(0.0, min(1.0, float(self.duck))))
 
     def with_level(self, pad: int, value: float) -> "Mixer":
         levels = list(self.levels)
@@ -48,7 +50,8 @@ class Mixer:
     def to_config(self) -> dict:
         return {"levels": list(self.levels), "master": self.master,
                 "filter": self.filter, "delay_div": self.delay_div,
-                "reverb": self.reverb, "damp": self.damp}
+                "reverb": self.reverb, "damp": self.damp,
+                "duck": self.duck}
 
     @classmethod
     def from_config(cls, raw: dict | None) -> "Mixer":
@@ -59,4 +62,5 @@ class Mixer:
                    filter=float(raw.get("filter", 0.5)),
                    delay_div=int(raw.get("delay_div", 2)),
                    reverb=float(raw.get("reverb", 0.3)),
-                   damp=float(raw.get("damp", 0.0))).normalised()
+                   damp=float(raw.get("damp", 0.0)),
+                   duck=float(raw.get("duck", 0.0))).normalised()

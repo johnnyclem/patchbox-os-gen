@@ -30,6 +30,7 @@ class PadDef:
     pan: float = 0.0             # -1..+1
     delay_send: float = 0.0      # 0..1
     reverb_send: float = 0.0     # 0..1
+    duck_key: bool = False       # this pad pumps the bus (see fxbus duck)
 
     def normalised(self) -> "PadDef":
         layers = tuple(sorted(
@@ -45,7 +46,8 @@ class PadDef:
             amp=max(0.0, min(2.0, float(self.amp))),
             pan=max(-1.0, min(1.0, float(self.pan))),
             delay_send=max(0.0, min(1.0, float(self.delay_send))),
-            reverb_send=max(0.0, min(1.0, float(self.reverb_send))))
+            reverb_send=max(0.0, min(1.0, float(self.reverb_send))),
+            duck_key=bool(self.duck_key))
 
     def layer_for(self, velocity: int) -> str | None:
         """The sample file this velocity plays, or None for an empty pad."""
@@ -61,7 +63,8 @@ class PadDef:
                 "choke": self.choke, "group": self.group, "tune": self.tune,
                 "filter": self.filter, "amp": self.amp, "pan": self.pan,
                 "delay_send": self.delay_send,
-                "reverb_send": self.reverb_send}
+                "reverb_send": self.reverb_send,
+                "duck_key": self.duck_key}
 
     @classmethod
     def from_config(cls, raw: dict | None) -> "PadDef":
@@ -75,4 +78,5 @@ class PadDef:
             filter=float(raw.get("filter", 1.0)),
             amp=float(raw.get("amp", 1.0)), pan=float(raw.get("pan", 0.0)),
             delay_send=float(raw.get("delay_send", 0.0)),
-            reverb_send=float(raw.get("reverb_send", 0.0))).normalised()
+            reverb_send=float(raw.get("reverb_send", 0.0)),
+            duck_key=bool(raw.get("duck_key", False))).normalised()

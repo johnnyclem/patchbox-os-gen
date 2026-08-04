@@ -38,7 +38,7 @@ MAX_VOICES = 32
 CHOKE_FADE = int(SAMPLE_RATE * 0.005)
 MASTER_CHANNEL = 15
 CC_TUNE, CC_PAN, CC_FILTER = 16, 10, 74
-CC_LEVEL, CC_DELAY_DIV, CC_REVERB, CC_DAMP = 7, 85, 91, 92
+CC_LEVEL, CC_DELAY_DIV, CC_REVERB, CC_DAMP, CC_DUCK = 7, 85, 91, 92, 93
 FILTER_STEPS = 16                # cutoff quantization for the FIR cache
 _MAX_KERNEL = 64
 
@@ -106,10 +106,11 @@ class SampleBank:
 
 class _Voice:
     __slots__ = ("channel", "note", "data", "position", "rate", "left",
-                 "right", "dsend", "rsend", "released", "fade", "seq")
+                 "right", "dsend", "rsend", "duck", "released", "fade",
+                 "seq")
 
     def __init__(self, channel, note, data, rate, gain, pan, dsend, rsend,
-                 seq) -> None:
+                 duck, seq) -> None:
         self.channel = channel
         self.note = note
         self.data = data
@@ -121,6 +122,7 @@ class _Voice:
         self.right = gain * float(np.sin(angle))
         self.dsend = dsend
         self.rsend = rsend
+        self.duck = duck
         self.released = False
         self.fade = -1               # >= 0: samples of choke fade remaining
         self.seq = seq
@@ -210,7 +212,7 @@ class Sampler:
         self._voices[key] = _Voice(
             channel, note, data, rate, gain,
             locks.get("pan", pad.pan), pad.delay_send, pad.reverb_send,
-            self._seq)
+            pad.duck_key, self._seq)
 
     def note_off(self, channel: int, note: int) -> None:
         voice = self._voices.pop((channel, note), None)
@@ -238,6 +240,8 @@ class Sampler:
                 self.fx.set_reverb(value / 127.0)
             elif number == CC_DAMP:
                 self.fx.set_damp(value / 127.0)
+            elif number == CC_DUCK:
+                self.fx.set_duck(value / 127.0)
             return
         if not 0 <= channel < PADS:
             return
@@ -283,6 +287,8 @@ class Sampler:
         dry = np.zeros((frames, 2), dtype=np.float32)
         dsend = np.zeros(frames, dtype=np.float32)
         rsend = np.zeros(frames, dtype=np.float32)
+        key = np.zeros(frames, dtype=np.float32)
+        keyed = False
         for voice in list(self._all_voices()):
             if voice.done():
                 self._reap(voice)
@@ -295,9 +301,13 @@ class Sampler:
                 dsend += mono * voice.dsend
             if voice.rsend > 0.0:
                 rsend += mono * voice.rsend
+            if voice.duck:
+                key += mono
+                keyed = True
             if voice.done():
                 self._reap(voice)
-        return self.fx.process(dry, dsend, rsend)
+        return self.fx.process(dry, dsend, rsend,
+                               key=key if keyed else None)
 
     def _reap(self, voice: _Voice) -> None:
         if voice in self._finished:

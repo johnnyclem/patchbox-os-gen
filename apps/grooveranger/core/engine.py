@@ -41,7 +41,7 @@ from core.steps import PADS, Pattern, STEPS, cond_passes
 log = logging.getLogger("grooveranger.engine")
 
 CC_TUNE, CC_PAN, CC_FILTER = 16, 10, 74
-CC_LEVEL, CC_DELAY_DIV, CC_REVERB, CC_DAMP = 7, 85, 91, 92
+CC_LEVEL, CC_DELAY_DIV, CC_REVERB, CC_DAMP, CC_DUCK = 7, 85, 91, 92, 93
 MASTER_CHANNEL = 15
 
 
@@ -109,6 +109,8 @@ class GrooveRangerEngine(base.RangerEngine):
                  int(round(self.mixer.reverb * 127)))
         self._cc(MASTER_CHANNEL, CC_DAMP,
                  int(round(self.mixer.damp * 127)))
+        self._cc(MASTER_CHANNEL, CC_DUCK,
+                 int(round(self.mixer.duck * 127)))
 
     def _cc(self, channel: int, number: int, value: int) -> None:
         self.midi.send(INTERNAL, MidiEvent(
@@ -250,6 +252,7 @@ class GrooveRangerEngine(base.RangerEngine):
                 level=self.mixer.levels[index], tune=pad.tune,
                 filter=pad.filter, amp=pad.amp, pan=pad.pan,
                 delay_send=pad.delay_send, reverb_send=pad.reverb_send,
+                duck_key=pad.duck_key,
                 has_samples=bool(pad.layers),
                 sounding=sounding.get(index, 0))
             for index, pad in enumerate(self.kit.pads))
@@ -274,7 +277,8 @@ class GrooveRangerEngine(base.RangerEngine):
                                 filter=self.mixer.filter,
                                 delay_div=self.mixer.delay_div,
                                 reverb=self.mixer.reverb,
-                                damp=self.mixer.damp),
+                                damp=self.mixer.damp,
+                                duck=self.mixer.duck),
             chain=tuple(tuple(entry) for entry in self.chain.entries),
             chain_on=self.chain.on, chain_position=self.chain.position,
             project_name=self.project.name,
@@ -406,7 +410,7 @@ def _h_mute_group(engine, c: cmd.MuteGroup) -> None:
 
 
 _PAD_FIELDS = ("name", "note", "choke", "group", "tune", "filter", "amp",
-               "pan", "delay_send", "reverb_send")
+               "pan", "delay_send", "reverb_send", "duck_key")
 
 
 def _h_pad_field(engine, c: cmd.SetPadField) -> None:
@@ -444,7 +448,8 @@ def _h_mixer_level(engine, c: cmd.SetMixerLevel) -> None:
 
 
 def _h_master_field(engine, c: cmd.SetMasterField) -> None:
-    if c.name not in ("master", "filter", "delay_div", "reverb", "damp"):
+    if c.name not in ("master", "filter", "delay_div", "reverb", "damp",
+                      "duck"):
         log.warning("unknown master field %r — ignored", c.name)
         return
     engine.mixer = replace(engine.mixer, **{c.name: c.value}).normalised()
@@ -461,6 +466,9 @@ def _h_master_field(engine, c: cmd.SetMasterField) -> None:
     elif c.name == "damp":
         engine._cc(MASTER_CHANNEL, CC_DAMP,
                    int(round(engine.mixer.damp * 127)))
+    elif c.name == "duck":
+        engine._cc(MASTER_CHANNEL, CC_DUCK,
+                   int(round(engine.mixer.duck * 127)))
 
 
 def _h_chain_append(engine, c: cmd.ChainAppend) -> None:

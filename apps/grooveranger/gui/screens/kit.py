@@ -35,6 +35,10 @@ class KitScreen(Screen):
         if key == "dest":
             return [cmd.SetKitField(name="dest",
                                     value=cycle(_DESTS, s.dest))]
+        if key == "duck":
+            pad = s.pads[s.selected_pad]
+            return [cmd.SetPadField(pad=s.selected_pad, name="duck_key",
+                                    value=not pad.duck_key)]
         if key == "prevkit":
             self.host.load_kit_step(-1)
             return []
@@ -143,7 +147,7 @@ class KitScreen(Screen):
             surface, self.hits, mid[1], self._pressed, size=12)
         Stepper("pan", "PAN", f"{pad.pan:+.1f}", width=30).draw(
             surface, self.hits, mid[2], self._pressed, size=12)
-        bottom = row(lines[2], 4, gap=4)
+        bottom = row(lines[2], 5, gap=4)
         Stepper("dsend", "DELAY", f"{pad.delay_send:.2f}",
                 width=26).draw(surface, self.hits, bottom[0],
                                self._pressed, size=11)
@@ -158,6 +162,9 @@ class KitScreen(Screen):
                 "—" if not pad.group else f"g{pad.group}",
                 width=26).draw(surface, self.hits, bottom[3],
                                self._pressed, size=11)
+        button(surface, self.hits, "duck", bottom[4], "KEY", 11,
+               active=pad.duck_key, color=theme.ACCENT2,
+               sub="ducks bus" if pad.duck_key else "duck key")
 
     def _plumbing(self, surface, rect, s) -> None:
         body = self._titled(surface, rect, "KIT + ROUTING")
