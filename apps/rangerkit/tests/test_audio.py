@@ -182,3 +182,31 @@ def test_render_blocks_rejects_non_finite():
 
 def test_sample_rate_contract():
     assert SAMPLE_RATE == 48000 and BLOCK_FRAMES == 256
+
+
+def test_cc_reaches_an_instrument_that_speaks_control():
+    class Ears:
+        def __init__(self):
+            self.heard = []
+
+        def note_on(self, *a):
+            pass
+
+        def note_off(self, *a):
+            pass
+
+        def all_off(self, channel=None):
+            self.heard.append(("all_off", channel))
+
+        def control(self, channel, number, value):
+            self.heard.append((channel, number, value))
+
+    ears = Ears()
+    bridge = SynthMidiBridge(CaptureMidiIO(), ears)
+    bridge.send(INTERNAL, MidiEvent(EventKind.CC, 0, 3, 74, 90))
+    bridge.send(INTERNAL, MidiEvent(EventKind.CC, 0, 3, 123, 0))
+    assert ears.heard == [(3, 74, 90), ("all_off", 3)]
+    # The simple synth has no ``control`` — the same CC is a quiet no-op.
+    synth = SimpleSynth()
+    SynthMidiBridge(CaptureMidiIO(), synth).send(
+        INTERNAL, MidiEvent(EventKind.CC, 0, 3, 74, 90))
