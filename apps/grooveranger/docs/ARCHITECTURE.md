@@ -36,7 +36,7 @@ the whole audio feature set as plain MIDI:
   immediately before the hit, consumed by the sampler's next note-on on
   that channel;
 - mixer levels are CC 7 per pad channel; channel 15 is the master bus
-  (74 filter, 85 delay division, 91 reverb, 92 damping, 7 level);
+  (74 filter, 85 delay division, 91 reverb, 92 damping, 93 duck, 7 level);
 - chokes and mutes are the release book doing what it always does.
 
 The engine never holds the sampler. Every fact the sampler needs either
@@ -88,7 +88,8 @@ a bit-exact bypass of the original tail.
 
 ## Deferred (deliberately)
 
-Sidechain compression on the bus, sample recording/resampling, per-step
-pad polyphony (a step is one hit), and kit editing beyond continuous
-params — kits are files. (Damped reverb shipped in stretch S1 via the
-shared closed-form one-pole.)
+Sample recording/resampling, per-step pad polyphony (a step is one
+hit), and kit editing beyond continuous params — kits are files. (Damped
+reverb shipped in stretch S1; sidechain shipped in S2 — pads flagged
+``duck_key`` pump the FX returns, block-rate follower, instant attack,
+~150 ms release, duck 0 bit-exact.)

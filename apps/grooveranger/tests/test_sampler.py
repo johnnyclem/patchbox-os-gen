@@ -255,3 +255,63 @@ def test_damp_cc_reaches_the_bus():
     assert sampler.fx.damp == 0.0
     sampler.control(MASTER_CHANNEL, 92, 127)
     assert sampler.fx.damp == 1.0
+
+
+def test_sidechain_ducks_the_returns_under_a_key():
+    def tail(duck: float) -> float:
+        fx = FxBus(SR)
+        fx.set_reverb(1.0)
+        fx.set_duck(duck)
+        zeros2 = np.zeros((256, 2), dtype=np.float32)
+        silence = np.zeros(256, dtype=np.float32)
+        send = np.zeros(256, dtype=np.float32)
+        send[:64] = 0.8
+        fx.process(zeros2, silence, send)
+        for _ in range(8):
+            fx.process(zeros2, silence, silence)     # let the room ring
+        key = np.full(256, 0.9, dtype=np.float32)
+        heard = [fx.process(zeros2, silence, silence,
+                            key=key if block < 3 else silence)
+                 for block in range(6)]
+        return rms(np.concatenate(heard))            # returns only: dry=0
+
+    assert tail(0.0) > tail(1.0) * 1.5               # the pump is audible
+
+
+def test_sidechain_recovers_after_the_key():
+    fx = FxBus(SR)
+    fx.set_reverb(1.0)
+    fx.set_duck(1.0)
+    zeros2 = np.zeros((256, 2), dtype=np.float32)
+    silence = np.zeros(256, dtype=np.float32)
+    send = np.zeros(256, dtype=np.float32)
+    send[:64] = 0.8
+    fx.process(zeros2, silence, send)
+    key = np.full(256, 0.9, dtype=np.float32)
+    ducked = rms(fx.process(zeros2, silence, silence, key=key))
+    assert fx._duck_gain < 0.2                       # fully pumped
+    for _ in range(150):                             # ~800 ms of release
+        fx.process(zeros2, silence, silence, key=silence)
+    assert fx._duck_gain > 0.9                       # gain came back
+    del ducked
+
+
+def test_duck_zero_is_bit_exact_and_key_flag_routes():
+    plain, keyed = make_sampler(), make_sampler()
+    for sampler in (plain, keyed):
+        sampler.control(MASTER_CHANNEL, 91, 100)
+        sampler.note_on(5, 46, 120)
+        sampler.note_on(0, 36, 120)
+    keyed.control(MASTER_CHANNEL, 93, 0)             # duck present but 0
+    assert np.array_equal(render_all(plain, 12), render_all(keyed, 12))
+    assert plain.kit.pads[0].duck_key                # KICK ships as key
+    assert not plain.kit.pads[5].duck_key
+    for sampler in (plain, keyed):
+        sampler.all_off()
+
+
+def test_duck_cc_reaches_the_bus():
+    sampler = make_sampler()
+    assert sampler.fx.duck == 0.0
+    sampler.control(MASTER_CHANNEL, 93, 127)
+    assert sampler.fx.duck == 1.0

@@ -142,7 +142,8 @@ def main() -> int:
         delay_send, reverb_send = SENDS.get(name, (0.0, 0.0))
         pads.append({"name": name, "note": note, "layers": layers,
                      "choke": choke, "group": group,
-                     "delay_send": delay_send, "reverb_send": reverb_send})
+                     "delay_send": delay_send, "reverb_send": reverb_send,
+                     "duck_key": name == "KICK"})
     kit = {"name": "rk909", "dest": "internal", "channel": 9, "pads": pads}
     (OUT / "kit.json").write_text(json.dumps(kit, indent=1) + "\n",
                                   encoding="utf-8")

@@ -63,6 +63,9 @@ class FxBus:
         self.bpm = 120.0
         self.division = 2            # index into DELAY_DIVISIONS
         self.damp = 0.0              # 0 = the original undamped tail
+        self.duck = 0.0              # sidechain depth on the returns
+        self._duck_env = 0.0
+        self._duck_gain = 1.0
         self._delay = _Ring(int(sample_rate * DELAY_MAX_S) + 1)
         self._combs = [(_Ring(length), gain, OnePole())
                        for length, gain in _COMBS]
@@ -87,6 +90,9 @@ class FxBus:
     def set_damp(self, value: float) -> None:
         self.damp = max(0.0, min(1.0, float(value)))
 
+    def set_duck(self, value: float) -> None:
+        self.duck = max(0.0, min(1.0, float(value)))
+
     def set_tempo(self, bpm: float) -> None:
         self.bpm = max(20.0, min(300.0, float(bpm)))
 
@@ -97,11 +103,14 @@ class FxBus:
 
     # --- the block -------------------------------------------------------------
     def process(self, dry: np.ndarray, delay_send: np.ndarray,
-                reverb_send: np.ndarray) -> np.ndarray:
+                reverb_send: np.ndarray,
+                key: np.ndarray | None = None) -> np.ndarray:
         frames = len(dry)
         out = dry.astype(np.float32).copy()
+        duck_gain = self._duck_ramp(key, frames)
         echo = self._delay.tap(frames, self._delay_samples())
         self._delay.push(delay_send + echo * DELAY_FEEDBACK)
+        echo = echo * duck_gain
         out[:, 0] += echo
         out[:, 1] += echo
         wet = np.zeros(frames, dtype=np.float32)
@@ -117,11 +126,29 @@ class FxBus:
             delayed = ring.tap(frames)
             ring.push(wet + delayed * _ALLPASS_G)
             wet = delayed - _ALLPASS_G * wet
-        gain = self.reverb * 0.25
-        out[:, 0] += wet * gain
-        out[:, 1] += wet * gain
+        wet = wet * (self.reverb * 0.25) * duck_gain
+        out[:, 0] += wet
+        out[:, 1] += wet
         out = self._one_knob(out)
         return np.clip(out * self.level, -1.0, 1.0).astype(np.float32)
+
+    # --- the sidechain ---------------------------------------------------------
+    def _duck_ramp(self, key, frames: int):
+        """Gain for this block's returns: instant attack on the key's
+        block peak, ~150 ms release, ramped from last block's gain so the
+        pump never zippers. duck 0 (or no key) is exactly gain 1."""
+        if self.duck <= 0.0 or key is None:
+            self._duck_env = 0.0
+            self._duck_gain = 1.0
+            return np.float32(1.0)
+        peak = float(np.max(np.abs(key))) if len(key) else 0.0
+        release = float(np.exp(-frames / (self.sample_rate * 0.15)))
+        self._duck_env = max(peak, self._duck_env * release)
+        target = 1.0 - self.duck * min(1.0, self._duck_env * 1.5)
+        ramp = np.linspace(self._duck_gain, target, frames,
+                           dtype=np.float32)
+        self._duck_gain = target
+        return ramp
 
     # --- the one-knob filter ---------------------------------------------------
     def _one_knob(self, block: np.ndarray) -> np.ndarray:

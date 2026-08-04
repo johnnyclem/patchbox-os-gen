@@ -204,6 +204,7 @@ class PadView:
     pan: float
     delay_send: float
     reverb_send: float
+    duck_key: bool
     has_samples: bool
     sounding: int
 
@@ -215,6 +216,7 @@ class MixerView:
     delay_div: int
     reverb: float
     damp: float
+    duck: float
 
 
 @dataclass(frozen=True, slots=True)
