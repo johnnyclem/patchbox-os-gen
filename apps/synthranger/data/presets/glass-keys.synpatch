@@ -1,0 +1,4 @@
+{"name": "GLASS KEYS", "engine": "fm", "fm_ratio": 3.5, "fm_index": 0.5,
+ "cutoff": 0.9, "resonance": 0.05, "filter_env": 0.15,
+ "amp_env": [0.003, 0.9, 0.35, 0.6], "mod_env": [0.002, 0.5, 0.0, 0.5],
+ "chorus": 0.3, "delay_send": 0.25}

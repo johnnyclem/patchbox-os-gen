@@ -51,7 +51,7 @@ jobs:
       matrix:
         # Apps join this list in the PR that lands them, in build order.
         app: [rangerkit, midiranger, genranger, phraseranger, sceneranger,
-              grooveranger]
+              grooveranger, synthranger]
         # 3.11 is what Bookworm ships and therefore what the appliance runs;
         # 3.12 is the canary for the next Raspberry Pi OS base.
         python-version: ['3.11', '3.12']

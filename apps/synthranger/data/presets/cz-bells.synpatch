@@ -1,0 +1,3 @@
+{"name": "CZ BELLS", "engine": "pd", "pd_warp": 0.7, "cutoff": 0.95,
+ "filter_env": 0.0, "amp_env": [0.002, 1.4, 0.0, 1.4],
+ "mod_env": [0.002, 1.0, 0.0, 1.0], "delay_send": 0.35}

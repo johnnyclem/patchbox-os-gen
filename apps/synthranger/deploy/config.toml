@@ -1,0 +1,89 @@
+# SynthRanger appliance configuration — /etc/synthranger/config.toml
+#
+# Deployment state only. Everything musical (parts, patches, the matrix)
+# lives in the project file under [paths] data_dir, so this file can be
+# copied between units without dragging somebody's sound along with it.
+#
+# The install stage rewrites width/height and the paths for the panel it is
+# building for; the rest is yours to edit. Restart after changing anything
+# here:  sudo systemctl restart synthranger
+
+[display]
+# The reference panel is the 1280x400 HDMI bar. The GUI derives its whole
+# layout from these two numbers — a portrait 480x800 gets stacked chrome
+# instead of side rails, with nothing else to configure.
+width = 1280
+height = 400
+fullscreen = true
+# industrial (light, tuned for the washed-out bar LCD) | mono | dusk
+theme = "industrial"
+fps = 60
+
+[paths]
+# Must be writable by the service user. The install stage creates these.
+# Factory presets ship read-only in /opt/synthranger/data/presets; user
+# saves land in presets_dir and shadow factory names.
+data_dir = "/var/lib/synthranger"
+projects_dir = "/var/lib/synthranger/projects"
+presets_dir = "/var/lib/synthranger/presets"
+
+[midi]
+# auto tries mido/python-rtmidi (the ALSA sequencer) and degrades to a silent
+# null backend rather than refusing to boot. The SET screen says which one
+# is in force; each part's listen channel is on the MIX screen.
+backend = "auto"
+# Sending MIDI clock (24 ppq) with the transport. Off by default: a box that
+# starts clocking the moment it boots will surprise whatever is downstream.
+clock_out = false
+
+[clock]
+# internal | midi — "midi" follows incoming 0xF8 on the bound inputs.
+source = "internal"
+pll_smooth = 0.2
+dropout_ms = 1000.0
+
+[engine]
+# SCHED_FIFO priority for the tick thread. The unit grants the capability;
+# 0 leaves scheduling alone (which is right on a dev box and wrong on stage).
+rt_priority = 40
+
+[button]
+# The PiSound button, bridged over a Unix socket because pisound-btn runs its
+# scripts as root under the system Python and the app runs as its own user
+# inside a venv. /run/synthranger is created by the unit's RuntimeDirectory=.
+enabled = true
+socket = "/run/synthranger/button.sock"
+
+[button.map]
+# Gesture -> action. Actions: play_stop, next_part, all_off, save_project,
+# panic, nothing. An unknown name is dropped with a log line, not a crash.
+CLICK_1 = "play_stop"
+CLICK_2 = "next_part"
+CLICK_3 = "all_off"
+HOLD_1S = "save_project"
+HOLD_5S = "panic"
+
+[pots]
+# Where the two panel pots come from: "midi_cc" (a pot box speaking MIDI —
+# use LEARN on the SET screen), "socket" (/run/synthranger/pots.sock, for a
+# future ADC daemon), or "none".
+source = "midi_cc"
+cc_a = 20
+cc_b = 21
+# -1 = any channel
+channel = -1
+
+[pots.map]
+# What each pot turns: cutoff, morph, level, nothing — all on the
+# selected part.
+POT_A = "cutoff"
+POT_B = "morph"
+
+[audio]
+# The internal endpoint's device layer. "auto" opens PortAudio against the
+# default device (the Pisound) and degrades to silent "null" when there is
+# no stack — the SET screen says which. Internal render is 48 kHz float32;
+# the DAC path may clock higher, the synthesis does not.
+backend = "auto"
+sample_rate = 48000
+block_frames = 256

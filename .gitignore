@@ -17,3 +17,4 @@ __pycache__/
 .pytest_cache/
 apps/*/data/projects/
 config.hyperpixel4-pimidi
+apps/*/data/user-presets/
