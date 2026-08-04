@@ -17,7 +17,8 @@ from rangerkit.gui import theme
 from rangerkit.gui.widgets import Stepper, button, column, row, \
     section_head, text
 
-STEPPED = ("addpt", "addps", "mfilt", "mdiv", "mverb", "mlvl")
+STEPPED = ("addpt", "addps", "mfilt", "mdiv", "mverb",
+           "mdamp", "mlvl")
 ENTRIES_SHOWN = 8
 _DIV_NAMES = ("1/8", ".1/8", "1/4", "1/2")
 
@@ -75,6 +76,10 @@ class SongScreen(Screen):
             return [cmd.SetMasterField(
                 name="reverb",
                 value=round(s.mixer.reverb + 0.05 * direction, 3))]
+        if name == "mdamp":
+            return [cmd.SetMasterField(
+                name="damp",
+                value=round(s.mixer.damp + 0.05 * direction, 3))]
         if name == "mlvl":
             return [cmd.SetMasterField(
                 name="master",
@@ -143,10 +148,14 @@ class SongScreen(Screen):
         Stepper("mdiv", "DELAY", _DIV_NAMES[s.mixer.delay_div],
                 width=36).draw(surface, self.hits, top[1], self._pressed,
                                size=13)
-        bottom = row(lines[1], 2, gap=4)
+        bottom = row(lines[1], 3, gap=4)
         Stepper("mverb", "REVERB", f"{s.mixer.reverb:.2f}",
-                width=36).draw(surface, self.hits, bottom[0],
-                               self._pressed, size=13)
+                width=30).draw(surface, self.hits, bottom[0],
+                               self._pressed, size=12)
+        Stepper("mdamp", "DAMP",
+                "—" if s.mixer.damp <= 0.0 else f"{s.mixer.damp:.2f}",
+                width=30).draw(surface, self.hits, bottom[1],
+                               self._pressed, size=12)
         Stepper("mlvl", "MASTER", f"{s.mixer.master:.2f}",
-                width=36).draw(surface, self.hits, bottom[1],
-                               self._pressed, size=13)
+                width=30).draw(surface, self.hits, bottom[2],
+                               self._pressed, size=12)

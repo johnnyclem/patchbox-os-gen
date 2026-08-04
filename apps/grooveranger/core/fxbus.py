@@ -9,12 +9,19 @@ low-pass, above center the same kernel's complement makes the high-pass,
 and the middle tenth is bit-exact passthrough.
 
 It is a deliberately lo-fi bus — a groovebox color, not a mastering chain.
-Retuning the delay while it rings jumps rather than glides, and the reverb
-is four undamped combs and two allpasses. Both are documented character.
+Retuning the delay while it rings jumps rather than glides; that stays
+documented character. The reverb is four combs and two allpasses, and
+since suite stretch S1 the combs are *dampable*: each feedback path runs
+through a shared closed-form one-pole (``rangerkit.audio.dsp.OnePole``) —
+the loop time stays longer than a block, so damping costs a few numpy
+calls and no per-sample Python. Damping 0 bypasses the poles bit-exactly,
+which is also why every pre-S1 rendering is unchanged by default.
 """
 from __future__ import annotations
 
 import numpy as np
+
+from rangerkit.audio.dsp import OnePole
 
 DELAY_FEEDBACK = 0.35
 DELAY_MIN_S, DELAY_MAX_S = 0.06, 2.0
@@ -55,8 +62,10 @@ class FxBus:
         self.reverb = 0.3            # return level for the reverb sends
         self.bpm = 120.0
         self.division = 2            # index into DELAY_DIVISIONS
+        self.damp = 0.0              # 0 = the original undamped tail
         self._delay = _Ring(int(sample_rate * DELAY_MAX_S) + 1)
-        self._combs = [(_Ring(length), gain) for length, gain in _COMBS]
+        self._combs = [(_Ring(length), gain, OnePole())
+                       for length, gain in _COMBS]
         self._allpasses = [_Ring(length) for length in _ALLPASSES]
         self._tail = np.zeros((0, 2), dtype=np.float32)
         self._kernel: np.ndarray | None = None
@@ -74,6 +83,9 @@ class FxBus:
 
     def set_delay_division(self, index: int) -> None:
         self.division = max(0, min(len(DELAY_DIVISIONS) - 1, int(index)))
+
+    def set_damp(self, value: float) -> None:
+        self.damp = max(0.0, min(1.0, float(value)))
 
     def set_tempo(self, bpm: float) -> None:
         self.bpm = max(20.0, min(300.0, float(bpm)))
@@ -93,8 +105,12 @@ class FxBus:
         out[:, 0] += echo
         out[:, 1] += echo
         wet = np.zeros(frames, dtype=np.float32)
-        for ring, gain in self._combs:
+        # damp → pole: 0 stays bit-exact bypass; 1 is a dark ~0.94 pole.
+        a_damp = self.damp * 0.94
+        for ring, gain, pole in self._combs:
             fed = ring.tap(frames)
+            if a_damp > 0.0:
+                fed = pole.process(fed, a_damp)
             ring.push(reverb_send + fed * gain)
             wet += fed
         for ring in self._allpasses:

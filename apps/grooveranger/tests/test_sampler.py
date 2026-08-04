@@ -226,3 +226,32 @@ def test_fxbus_filter_ends_stay_finite_and_shape():
     assert np.all(np.isfinite(low)) and np.all(np.isfinite(high))
     assert float(np.abs(np.diff(low[:, 0])).mean()) \
         < float(np.abs(np.diff(high[:, 0])).mean())
+
+
+def test_reverb_damping_darkens_the_tail_and_zero_is_bit_exact():
+    from core.fxbus import FxBus
+
+    def tail(damp: float) -> np.ndarray:
+        fx = FxBus(SR)
+        fx.set_reverb(1.0)
+        fx.set_damp(damp)
+        silence = np.zeros(256, dtype=np.float32)
+        send = np.zeros(256, dtype=np.float32)
+        send[0] = 1.0
+        fx.process(np.zeros((256, 2), dtype=np.float32), silence, send)
+        blocks = [fx.process(np.zeros((256, 2), dtype=np.float32),
+                             silence, silence) for _ in range(40)]
+        return np.concatenate(blocks)[-4096:, 0]
+
+    bright, dark = tail(0.0), tail(1.0)
+    assert np.all(np.isfinite(dark))
+    hf = lambda x: float(np.abs(np.diff(x)).mean())  # noqa: E731
+    assert hf(bright) > hf(dark) * 1.5
+    assert np.array_equal(tail(0.0), bright)         # damp 0 = identical
+
+
+def test_damp_cc_reaches_the_bus():
+    sampler = make_sampler()
+    assert sampler.fx.damp == 0.0
+    sampler.control(MASTER_CHANNEL, 92, 127)
+    assert sampler.fx.damp == 1.0

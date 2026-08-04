@@ -214,6 +214,7 @@ class MixerView:
     filter: float
     delay_div: int
     reverb: float
+    damp: float
 
 
 @dataclass(frozen=True, slots=True)

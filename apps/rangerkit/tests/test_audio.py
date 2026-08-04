@@ -210,3 +210,23 @@ def test_cc_reaches_an_instrument_that_speaks_control():
     synth = SimpleSynth()
     SynthMidiBridge(CaptureMidiIO(), synth).send(
         INTERNAL, MidiEvent(EventKind.CC, 0, 3, 74, 90))
+
+
+def test_shared_one_pole_matches_the_recurrence_and_carries_state():
+    from rangerkit.audio.dsp import OnePole
+    rng = np.random.RandomState(11)
+    x = rng.uniform(-1, 1, 300).astype(np.float32)
+    for a in (0.2, 0.6, 0.95):
+        pole = OnePole()
+        got = pole.process(x, a)
+        want = np.empty_like(x, dtype=np.float64)
+        level = 0.0
+        for n in range(len(x)):
+            level = (1 - a) * x[n] + a * level
+            want[n] = level
+        assert np.allclose(got, want, atol=2e-4), a
+    whole = OnePole().process(x, 0.9)
+    split = OnePole()
+    joined = np.concatenate([split.process(x[:128], 0.9),
+                             split.process(x[128:], 0.9)])
+    assert np.allclose(whole, joined, atol=1e-5)
