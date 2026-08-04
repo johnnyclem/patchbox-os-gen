@@ -4,6 +4,11 @@
 #
 # Runs on the pi-gen host: bash only (no python3).
 
+if [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
+	echo "ENABLE_HYPERPIXEL4=1 — skipping ultrawide HDMI setup (DPI owns panel)"
+	exit 0
+fi
+
 if [ "${ENABLE_HDMI_ULTRAWIDE}" != "1" ]; then
 	echo "ENABLE_HDMI_ULTRAWIDE!=1 — skipping ultrawide HDMI setup"
 	exit 0

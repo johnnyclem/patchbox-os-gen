@@ -269,6 +269,32 @@ export ENABLE_RASPIAUDIO="${ENABLE_RASPIAUDIO:-0}"
 export RASPIAUDIO_OVERLAY="${RASPIAUDIO_OVERLAY:-wm8960-soundcard}"
 export RASPBIAN_MIRROR="${RASPBIAN_MIRROR:-http://mirrors.ocf.berkeley.edu/raspbian/raspbian}"
 
+# HyperPixel owns the DPI panel. Forced HDMI bar modes fight pinmux / kiosk
+# geometry and are a common reason a "HyperPixel build" boots with a black
+# glass (only the backlight flashes). Mutual exclusion is enforced here so
+# config.local HDMI leftovers cannot re-enable Profile A mid-build.
+if [ "${ENABLE_HYPERPIXEL4}" = "1" ] && [ "${ENABLE_HDMI_ULTRAWIDE}" = "1" ]; then
+	echo "NOTE: ENABLE_HYPERPIXEL4=1 → forcing ENABLE_HDMI_ULTRAWIDE=0 (DPI owns panel)"
+	ENABLE_HDMI_ULTRAWIDE=0
+	export ENABLE_HDMI_ULTRAWIDE
+fi
+
+echo "========================================"
+echo " Patchbox display profile (build.sh)"
+if [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
+	echo "  HyperPixel 4  ${HYPERPIXEL_WIDTH}x${HYPERPIXEL_HEIGHT}  rotate=${HYPERPIXEL_ROTATE}"
+	echo "  stage 12 will write dtoverlay=vc4-kms-dpi-hyperpixel4"
+else
+	if [ "${ENABLE_HDMI_ULTRAWIDE}" = "1" ]; then
+		echo "  HDMI ultrawide  ${HDMI_WIDTH}x${HDMI_HEIGHT}"
+		echo "  ENABLE_HYPERPIXEL4=0 — stage 12 SKIPPED (no DPI overlay)"
+	else
+		echo "  stock display path (no HyperPixel, no forced HDMI bar)"
+	fi
+fi
+echo "  RK00PI panel: ${RK00PI_WIDTH:-auto}x${RK00PI_HEIGHT:-auto}"
+echo "========================================"
+
 export LOCALE_DEFAULT="${LOCALE_DEFAULT:-en_GB.UTF-8}"
 
 export KEYBOARD_KEYMAP="${KEYBOARD_KEYMAP:-gb}"

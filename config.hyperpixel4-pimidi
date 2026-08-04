@@ -1,10 +1,14 @@
-# Full config for HyperPixel 4.0" display-first build (literals — not env-dependent).
+# Profile B: Pi 5 + HyperPixel 4.0" 800×480 DPI (display-first)
 # Usage:
 #   ./build-docker.sh -c config.hyperpixel4-pimidi
-# Or: cp config.hyperpixel4-pimidi config  &&  ./build-docker.sh
+#   ./build-docker.sh config.hyperpixel4-pimidi   # bare path also works
 #
-# Display owns the 40-pin. Pimidi packages can install, but the DT overlay is
-# stripped by stage 12 so DPI can paint. Use USB MIDI for I/O on this profile.
+# WiFi / secrets: keep them in config.local (always sourced via the default
+# config). Do NOT blank WPA_* here — that used to wipe client WiFi when this
+# file was passed as -c.
+#
+# GPIO: HyperPixel owns the 40-pin. Stage 12 strips dtoverlay=pimidi so the
+# panel can light. Use USB MIDI here; use Profile A (HDMI) for TRS Pimidi.
 
 IMG_NAME="Patchbox"
 FIRST_USER_NAME="patch"
@@ -58,7 +62,3 @@ ENABLE_INKY_STATUS_SERVICE=0
 ENABLE_RASPIAUDIO=0
 
 RASPBIAN_MIRROR=http://mirrors.ocf.berkeley.edu/raspbian/raspbian
-
-WPA_COUNTRY=
-WPA_ESSID=
-WPA_PASSWORD=

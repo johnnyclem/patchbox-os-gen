@@ -38,6 +38,25 @@ do
 	esac
 done
 
+# Footgun fix: `./build-docker.sh config.hyperpixel4-pimidi` (no -c) used to be
+# silently ignored by getopts, so the default HDMI profile was built instead.
+# Treat a bare path that exists as a file as -c <path>.
+shift $((OPTIND - 1)) || true
+for _arg in "$@"; do
+	case "${_arg}" in
+		-*) continue ;;
+	esac
+	_cand="${_arg}"
+	if [ ! -f "${_cand}" ] && [ -f "${DIR}/${_cand}" ]; then
+		_cand="${DIR}/${_cand}"
+	fi
+	if [ -f "${_cand}" ]; then
+		echo "Note: treating '${_arg}' as config file (same as -c ${_cand})"
+		CONFIG_FILE="${_cand}"
+		break
+	fi
+done
+
 # Ensure that the configuration file is an absolute path (required for docker
 # bind-mounts — a relative path becomes a named volume and /config is empty).
 if [ -n "${CONFIG_FILE}" ]; then
@@ -56,6 +75,43 @@ else
 	# shellcheck disable=SC1090
 	source ${CONFIG_FILE}
 fi
+
+# Profile sanity: a path/name that says hyperpixel must actually enable it.
+# (config.local HDMI leftovers used to leave ENABLE_HYPERPIXEL4=0 while people
+# thought they were building Profile B.)
+_cfg_base="$(basename "${CONFIG_FILE}")"
+if echo "${_cfg_base}" | grep -qi 'hyperpixel'; then
+	if [ "${ENABLE_HYPERPIXEL4:-0}" != "1" ]; then
+		echo "ERROR: config '${CONFIG_FILE}' looks like a HyperPixel profile" 1>&2
+		echo "       but ENABLE_HYPERPIXEL4='${ENABLE_HYPERPIXEL4:-}' (expected 1)." 1>&2
+		echo "       Fix the profile or pass ENABLE_HYPERPIXEL4=1 on the command line." 1>&2
+		exit 1
+	fi
+fi
+
+# HyperPixel owns the DPI panel — never bake forced HDMI bar modes alongside it.
+if [ "${ENABLE_HYPERPIXEL4:-0}" = "1" ] && [ "${ENABLE_HDMI_ULTRAWIDE:-0}" = "1" ]; then
+	echo "NOTE: ENABLE_HYPERPIXEL4=1 → forcing ENABLE_HDMI_ULTRAWIDE=0 (DPI owns panel)"
+	ENABLE_HDMI_ULTRAWIDE=0
+fi
+
+echo "========================================"
+echo " Patchbox OS image build"
+echo "  config: ${CONFIG_FILE}"
+if [ "${ENABLE_HYPERPIXEL4:-0}" = "1" ]; then
+	echo "  display: HyperPixel 4  ${HYPERPIXEL_WIDTH:-800}x${HYPERPIXEL_HEIGHT:-480}"
+	echo "           rotate=${HYPERPIXEL_ROTATE:-left}  (dtoverlay=vc4-kms-dpi-hyperpixel4)"
+else
+	if [ "${ENABLE_HDMI_ULTRAWIDE:-0}" = "1" ]; then
+		echo "  display: HDMI ultrawide  ${HDMI_WIDTH:-1280}x${HDMI_HEIGHT:-400}"
+		echo "           (no HyperPixel overlay — DPI panel will stay black)"
+	else
+		echo "  display: stock / none forced"
+	fi
+fi
+echo "  pimidi:  ENABLE_PIMIDI=${ENABLE_PIMIDI:-0}  sel=${PIMIDI_SEL:-0}"
+echo "  panel:   RK00PI ${RK00PI_WIDTH:-auto}x${RK00PI_HEIGHT:-auto}"
+echo "========================================"
 
 CONTAINER_NAME=${CONTAINER_NAME:-pigen_work}
 CONTINUE=${CONTINUE:-0}

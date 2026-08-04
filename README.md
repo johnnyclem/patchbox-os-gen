@@ -445,6 +445,34 @@ Display mode is forced via `hdmi_cvt` / `hdmi_mode=87` and cmdline
 `video=HDMI-A-1:1280x400@60D` (`stage3/09-hdmi-ultrawide`). Override with
 `HDMI_WIDTH` / `HDMI_HEIGHT` / `HDMI_REFRESH`.
 
+### Alternate stack: HyperPixel 4.0" DPI (Profile B)
+
+```text
+Pi 5 + Pimoroni HyperPixel 4.0" rectangular (owns 40-pin)
+    + 800×480 @ 60 DPI  (dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270)
+    + USB MIDI (Pimidi DT overlay is stripped — GPIO clash)
+    + RK-00pi kiosk at 800×480
+```
+
+**Build command (required):**
+
+```bash
+./build-docker.sh -c config.hyperpixel4-pimidi
+# bare path also works:  ./build-docker.sh config.hyperpixel4-pimidi
+```
+
+Plain `./build-docker.sh` is Profile A (HDMI). That image has **no** HyperPixel
+overlay — the glass stays black (backlight may flash once). Keep WiFi secrets
+in `config.local`; do not put HDMI geometry there if you also build HyperPixel
+images.
+
+Field fix for an already-flashed HDMI image on a HyperPixel unit:
+
+```bash
+./scripts/fix-hyperpixel4-bootfs.sh /Volumes/bootfs   # SD in Mac
+# or on the Pi:  sudo patchbox-fix-hyperpixel4 && sudo reboot
+```
+
 Parked options (still in tree, off by default): Waveshare GPIO DPI, Inky
 e-paper, RaspiAudio I2S — each conflicts with Pisound and/or the chosen UI.
 
@@ -502,8 +530,10 @@ on the unit with `patchbox-rk00pi-autohub` (read-only) and repair with
 | `RK00PI_HUB_PRESET` | follows `ENABLE_PIMIDI` | Starter hub: `pimidi-2x2`, else `rk008` (Pisound DIN) |
 | `ENABLE_CHORDRANGER` | `1` | Install ChordRanger from `apps/chordranger` |
 | `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi |
-| `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch |
-| `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Panel geometry |
+| `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch (Profile A) |
+| `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | HDMI panel geometry |
+| `ENABLE_HYPERPIXEL4` | `0` | Pimoroni HyperPixel 4 DPI (Profile B; use `-c config.hyperpixel4-pimidi`) |
+| `HYPERPIXEL_WIDTH` / `HEIGHT` / `ROTATE` | 800 / 480 / left | DPI geometry + landscape rotation |
 | `ENABLE_WAVESHARE_DPI` | `0` | GPIO DPI (conflicts with Pisound) |
 | `ENABLE_INKY` | `0` | E-paper software |
 | `ENABLE_RASPIAUDIO` | `0` | I2S audio HAT |

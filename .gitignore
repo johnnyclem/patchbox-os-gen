@@ -9,12 +9,10 @@ apt-cacher-ng/
 .DS_Store
 # Local secrets (WiFi SSID/password) — never commit
 config.local
-config.local
 
 # Python bytecode from running the stage tests in place
 __pycache__/
 *.pyc
 .pytest_cache/
 apps/*/data/projects/
-config.hyperpixel4-pimidi
 apps/*/data/user-presets/

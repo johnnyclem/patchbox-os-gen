@@ -1,11 +1,10 @@
 # Profile B: Pi 5 + HyperPixel 4.0" 800×480 DPI (display-first)
 # Usage:
-#   cp config.hyperpixel4-pimidi.example config.local
-#   # optional WiFi: set WPA_* in config.local
-#   ./build-docker.sh
-#
-# Or one-shot:
 #   ./build-docker.sh -c config.hyperpixel4-pimidi
+#   ./build-docker.sh config.hyperpixel4-pimidi   # bare path also works
+#
+# WiFi / secrets stay in config.local (do not put passwords here):
+#   cp config.local.example config.local   # fill WPA_* only
 #
 # GPIO: HyperPixel owns the 40-pin. Stage 12 strips dtoverlay=pimidi so the
 # panel can light. Use USB MIDI here; use Profile A (HDMI) for TRS Pimidi.

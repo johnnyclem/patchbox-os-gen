@@ -19,9 +19,23 @@ Raspberry Pi 5
 
 ### Profile B — HyperPixel 4.0" DPI (`config.hyperpixel4-pimidi` / `.example`)
 
-**Black panel / backlight-only:** the last default deploy image was often
-**Profile A (HDMI)** — no `dtoverlay=vc4-kms-dpi-hyperpixel4`. HyperPixel then
-only flashes its backlight. Fix without rebuild (SD in Mac):
+**Build command (required):**
+
+```bash
+./build-docker.sh -c config.hyperpixel4-pimidi
+# bare path also works:  ./build-docker.sh config.hyperpixel4-pimidi
+```
+
+Plain `./build-docker.sh` is **Profile A (HDMI)** — stage 12 logs
+`ENABLE_HYPERPIXEL4!=1 — skipping HyperPixel 4 setup` and the DPI glass stays
+black (backlight may flash once). The 2026-08-04 deploy image was this case.
+
+Keep `config.local` for WiFi / machine overrides only — do **not** put
+`ENABLE_HDMI_ULTRAWIDE=1` + `RK00PI_WIDTH=1280` there if you also want HyperPixel
+builds; those leftovers used to re-assert Profile A.
+
+**Black panel / backlight-only on an already-flashed SD:** convert without
+rebuild (SD in Mac):
 
 ```bash
 ./scripts/fix-hyperpixel4-bootfs.sh /Volumes/bootfs

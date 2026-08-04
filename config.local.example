@@ -1,8 +1,13 @@
 # Copy to config.local and fill in (config.local is gitignored):
 #   cp config.local.example config.local
 #
-# Then rebuild:
-#   ./build-docker.sh
+# Keep this file for secrets + machine overrides only.
+# Display profiles are selected at build time, not here:
+#   Profile A (HDMI 1280×400):  ./build-docker.sh
+#   Profile B (HyperPixel 4):   ./build-docker.sh -c config.hyperpixel4-pimidi
+#
+# Do not put ENABLE_HDMI_ULTRAWIDE / RK00PI_WIDTH=1280 here if you also build
+# HyperPixel images — those leftovers used to force HDMI on every rebuild.
 
 # Required for client WiFi join + RF unblock on Bookworm
 WPA_COUNTRY="US"
