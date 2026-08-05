@@ -67,13 +67,44 @@ if [ -n "${CONFIG_FILE}" ]; then
 	fi
 fi
 
-# Ensure that the confguration file is present
+# Ensure that the configuration file is present
 if test -z "${CONFIG_FILE}" || [ ! -f "${CONFIG_FILE}" ]; then
 	echo "Configuration file need to be present in '${DIR}/config' or path passed as parameter"
 	exit 1
+fi
+
+# Layer configs the same way container build.sh does:
+#   1) base product config (IMG_NAME, defaults, config.local)
+#   2) profile overlay from -c (waveshare / hyperpixel / …)
+# Profile-only files (config.waveshare35-pimidi) intentionally omit IMG_NAME.
+BASE_CONFIG="${DIR}/config"
+_base_abs=""
+_cfg_abs=""
+if [ -f "${BASE_CONFIG}" ]; then
+	if test -x /usr/bin/realpath; then
+		_base_abs=$(realpath -s "${BASE_CONFIG}" 2>/dev/null || realpath "${BASE_CONFIG}")
+	else
+		_base_abs="$(cd "$(dirname "${BASE_CONFIG}")" && pwd)/$(basename "${BASE_CONFIG}")"
+	fi
+fi
+if test -x /usr/bin/realpath; then
+	_cfg_abs=$(realpath -s "${CONFIG_FILE}" 2>/dev/null || realpath "${CONFIG_FILE}")
 else
+	_cfg_abs="${CONFIG_FILE}"
+fi
+
+if [ -n "${_base_abs}" ] && [ -f "${_base_abs}" ]; then
 	# shellcheck disable=SC1090
-	source ${CONFIG_FILE}
+	source "${_base_abs}"
+fi
+if [ -n "${_cfg_abs}" ] && [ -f "${_cfg_abs}" ] && [ "${_cfg_abs}" != "${_base_abs}" ]; then
+	# shellcheck disable=SC1090
+	source "${_cfg_abs}"
+	echo "  (base config + profile overlay: $(basename "${_cfg_abs}"))"
+elif [ -z "${_base_abs}" ] || [ ! -f "${_base_abs}" ]; then
+	# No base config in tree — profile must be a full config.
+	# shellcheck disable=SC1090
+	source "${CONFIG_FILE}"
 fi
 
 # Profile sanity: path/name must match the display toggle it implies.
@@ -135,10 +166,10 @@ CONTINUE=${CONTINUE:-0}
 PRESERVE_CONTAINER=${PRESERVE_CONTAINER:-0}
 PIGEN_DOCKER_OPTS=${PIGEN_DOCKER_OPTS:-""}
 
-if [ -z "${IMG_NAME}" ]; then
-	echo "IMG_NAME not set in 'config'" 1>&2
+if [ -z "${IMG_NAME:-}" ]; then
+	echo "IMG_NAME not set — base '${DIR}/config' must define it (or use a full profile)." 1>&2
 	echo 1>&2
-exit 1
+	exit 1
 fi
 
 # Ensure the Git Hash is recorded before entering the docker container

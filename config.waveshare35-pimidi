@@ -1,5 +1,8 @@
 # Profile C: Pi + Waveshare 3.5" DPI 640×480 capacitive + Blokas Pimidi
 #
+# Overlay on top of base `config` (IMG_NAME, stages, config.local). Both
+# build-docker.sh and container build.sh source base first, then this file.
+#
 # Stack (physical):
 #   Raspberry Pi
 #     └── Blokas Pimidi (40-pin) — 2×2 TRS MIDI

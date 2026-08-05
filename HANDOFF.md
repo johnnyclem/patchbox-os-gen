@@ -121,8 +121,23 @@ No GPIO display. Pisound owns the header for audio/MIDI. Display does not compet
 **App source:** git submodule `RK-00pi` → `git@github.com:johnnyclem/RK-00pi.git`  
 Baked into the image by `stage3/10-install-rk00pi` as `/opt/rk00pi`.
 
-**Submodule tip (2026-08-04):** `c9dfa21` — midi/audio unified setup + hub fit
-(`core/hub_fit.py`) + companion remote routing UI (raspimidihub parity 0–3).
+**Submodule tip (2026-08-05):** `e286646` (main) — merge of Digitakt/DTK +
+raspimidihub planning series on top of the jitter-fix stack. Notable vs
+`c9dfa21` (previous pin):
+
+| Area | Change for the image |
+|------|----------------------|
+| **RT unit** | Drop process-wide `CPUSchedulingPolicy=fifo`; keep `LimitRTPRIO=61` only (tick thread elevates itself) |
+| **Interpreter** | `main.tune_runtime()` — 1 ms GIL switch interval + `gc.freeze()` boot graph |
+| **Pimidi preset** | `pimidi-2x2.rkhub` port match is `a`/`b` (not `pimidi-a`/`pimidi-b`) |
+| **Multi-HAT hub** | AUTO / autohub keeps Pimidi **and** Pisound (`din_*_ps`) |
+| **Power** | Diagnostics SHUT/REBOOT/RESTART + `deploy/sudoers.d/rk00pi-power` |
+| **Screensaver** | `[display] screensaver_sec = 120` (burn-in guard) |
+| **Native** | Stage builds `librk424.so` **and** `librkdtk.so` (DTK off by default) |
+| **Proof** | `bench/patchbox_proof.sh` — 1 ms conformance artifact on device |
+
+Parent gitlink may still lag until `git add RK-00pi` records `e286646` — the
+working tree is what `stage3/10` rsyncs into the image.
 
 ---
 
@@ -220,8 +235,8 @@ on the panel **I/O → PORTS → AUTO FIT** (also DIN device + per-port rows).
 
 App-side (RK-00pi): the Hub tab and Set → I/O are merged into one **I/O** tab
 (PORTS · ROUTE · AUDIO). Port matching no longer collapses a 2×2 PiMIDI onto
-one jack when match strings are client-only; `retarget_din` pins `pimidi-a`/`b`
-from endpoint id suffixes when needed.
+one jack when match strings are client-only; endpoints use ALSA seq ports
+**`a` / `b`** (client `pimidi0` / match substring `pimidi`).
 
 ### The Button — default gestures
 
@@ -548,7 +563,7 @@ config.waveshare35-pimidi         # Profile C bake preset
 config.waveshare35-pimidi.example
 .gitmodules
 SOAK-PROFILE-A.md                 # on-device soak (Profile A)
-RK-00pi/                          # submodule (main app) @ c9dfa21+
+RK-00pi/                          # submodule (main app) @ e286646
 apps/chordranger/                 # second app (in-repo, not a submodule)
 stage3/02-install-pisound/
 stage3/08-install-waveshare-dpi/  # Profile C panel

@@ -54,6 +54,10 @@ if command -v rsync >/dev/null 2>&1; then
 		--exclude '*.pyc' \
 		--exclude '.pytest_cache/' \
 		--exclude 'data/projects/' \
+		--exclude '*_BACKUP_*' \
+		--exclude '*_BASE_*' \
+		--exclude '*_LOCAL_*' \
+		--exclude '*_REMOTE_*' \
 		"${RK_SRC}/" "${ROOTFS_DIR}${PREFIX}/"
 else
 	# Fallback: selective copy (rsync is in 00-packages for the rootfs, not host)
@@ -245,6 +249,21 @@ if ! grep -qE '^Environment=SDL_TOUCH_MOUSE_EVENTS=' "${UNIT_FILE}"; then
 	fi
 	echo "  patched rk00pi.service SDL_TOUCH_MOUSE_EVENTS=0"
 fi
+# RT layout (RK-00pi ≥ e286646): process stays SCHED_OTHER; only the tick
+# thread elevates via LimitRTPRIO. Process-wide FIFO made the GUI HOL-block
+# the 1 ms jitter budget — strip any leftover grant from older unit files.
+if grep -qE '^CPUSchedulingPolicy=' "${UNIT_FILE}" 2>/dev/null; then
+	TMPU="$(mktemp)"
+	grep -vE '^CPUSchedulingPolicy=|^CPUSchedulingPriority=' \
+		"${UNIT_FILE}" > "${TMPU}"
+	cat "${TMPU}" > "${UNIT_FILE}"
+	rm -f "${TMPU}"
+	echo "  stripped process-wide CPUSchedulingPolicy (tick thread only + LimitRTPRIO)"
+fi
+if ! grep -qE '^LimitRTPRIO=' "${UNIT_FILE}" 2>/dev/null; then
+	printf '\nLimitRTPRIO=61\n' >> "${UNIT_FILE}"
+	echo "  added LimitRTPRIO=61"
+fi
 
 # --- The Button (PiSound) ----------------------------------------------------
 # pisound-btn (stage3/02) runs action scripts as root under system python.
@@ -330,14 +349,14 @@ Patchbox OS — RK-00pi (main appliance)
 
 What boots
   multi-user.target → rk00pi.service  (NOT graphical / LightDM)
-  SDL_VIDEODRIVER=kmsdrm fullscreen on the HDMI ${W}x${H} panel
-  Pisound = MIDI DIN + 1/4" audio (prefer_pisound=true)
+  SDL_VIDEODRIVER=kmsdrm fullscreen on the ${W}x${H} panel
+  MIDI hub from baked preset + autohub at every start
   If you ever land on the Linux desktop instead:
     sudo systemctl set-default multi-user.target
     sudo systemctl disable lightdm
     sudo reboot
 
-The Button (PiSound board)
+The Button (PiSound board — only when ENABLE_RK00PI_BUTTON=1)
   1 click     play / stop transport
   2 clicks    record toggle
   hold ~1 s   save project
@@ -351,20 +370,25 @@ Paths
   config:  /etc/rk00pi/config.toml
   socket:  /run/rk00pi/button.sock
   unit:    systemctl status rk00pi
+  source:  cat /opt/rk00pi/.patchbox-source-commit
 
 Checks
   patchbox-rk00pi-status
   journalctl -u rk00pi -b -n 80
   amidi -l ; aplay -l
+  # 1 ms jitter proof (stop kiosk first for --gui):
+  #   sudo systemctl stop rk00pi
+  #   cd /opt/rk00pi && ./bench/patchbox_proof.sh
 
 MIDI silent? (devices listed on DIAGNOSTICS, nothing plays or records)
-  An endpoint binds to an ALSA port by *name*. If the image was built for
-  one HAT and this Pi carries another, every DIN endpoint asks for a client
+  An endpoint binds to an ALSA port by *name*. Pimidi 2×2 uses client
+  "pimidi" + ports a/b (not "pimidi-a"). If the image was built for one
+  HAT and this Pi carries another, every DIN endpoint asks for a client
   that is not here and nothing binds — the scan still shows the device names.
 
   patchbox-rk00pi-autohub            # which endpoints resolve, and why not
   sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi
-  # on the panel instead: Set -> I/O -> MIDI -> DIN
+  # on the panel: I/O → PORTS → AUTO FIT  (or DIN DEVICE stepper)
 
   The service already runs --apply at every start; the previous hub is kept
   at <project>.autohub.bak and the generated one at
@@ -372,9 +396,23 @@ MIDI silent? (devices listed on DIAGNOSTICS, nothing plays or records)
   sudo touch /etc/rk00pi/autohub.disabled
 
 Power (clean reboot / shutdown — no hard unplug)
-  On the panel: Set → DIAG → SHUT DOWN or REBOOT (tap twice to confirm)
+  On the panel: Set → DIAG → SHUT DOWN / REBOOT / RESTART (double-tap confirm)
+  Needs /etc/sudoers.d/rk00pi-power (baked by this stage).
   Or:  sudo systemctl poweroff / reboot
   App restart only: RESTART on Diagnostics (or systemctl restart rk00pi)
+
+Screensaver (LCD burn-in)
+  Blank after 120 s idle ([display] screensaver_sec). Engine keeps running;
+  first tap wakes only. Set 0 in /etc/rk00pi/config.toml to disable.
+
+RT scheduling
+  Process is SCHED_OTHER; only the tick thread elevates (LimitRTPRIO=61).
+  Do NOT set CPUSchedulingPolicy=fifo on the unit — that HOL-blocks the
+  1 ms jitter budget under GUI load.
+
+Optional personalities (off by default in config.toml)
+  [tape] enabled    — RK-424 deck (librk424.so built at image time)
+  [sampler] enabled — DTK drum computer (librkdtk.so; exclusive with tape)
 
 Field repair (touch dead / button dead)
   sudo patchbox-fix-input-button
@@ -473,7 +511,8 @@ if ! sudo -u "\${APP_USER}" "\${PIP}" install --no-cache-dir -r "\${PREFIX}/requ
 	done
 fi
 
-# Build the RK-424 tape DSP (optional; soft deck still runs without it).
+# Build native DSPs (optional; soft fallbacks when .so missing).
+# Matches deploy/install.sh: tape (librk424) + sampler/DTK (librkdtk).
 if [ -f "${PREFIX}/native/tape/Makefile" ]; then
 	echo "building native tape DSP (librk424.so)"
 	if command -v g++ >/dev/null 2>&1; then
@@ -490,6 +529,24 @@ if [ -f "${PREFIX}/native/tape/Makefile" ]; then
 		fi
 	else
 		echo "  warning: g++ missing — skipping tape DSP"
+	fi
+fi
+if [ -f "${PREFIX}/native/sampler/Makefile" ]; then
+	echo "building native sampler DSP (librkdtk.so)"
+	if command -v g++ >/dev/null 2>&1; then
+		make -C "${PREFIX}/native/sampler" clean >/dev/null 2>&1 || true
+		if make -C "${PREFIX}/native/sampler"; then
+			chown -R "${APP_USER}:${APP_USER}" "${PREFIX}/native/sampler" || true
+			if make -C "${PREFIX}/native/sampler" info 2>/dev/null | grep -q "ALSA     = yes"; then
+				echo "  sampler DSP built with ALSA"
+			else
+				echo "  sampler DSP built WITHOUT ALSA (null backend for DTK)"
+			fi
+		else
+			echo "  warning: sampler DSP build failed — DTK unavailable until rebuilt"
+		fi
+	else
+		echo "  warning: g++ missing — skipping sampler DSP"
 	fi
 fi
 
