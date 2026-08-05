@@ -80,6 +80,16 @@ fi
 if [ -d "${RK_SRC}/data/maps" ]; then
 	cp -a "${RK_SRC}/data/maps/." "${ROOTFS_DIR}${DATA_DIR}/maps/" 2>/dev/null || true
 fi
+# QY100-style factory songs (Parts bank + Song arrangement). Regenerate with
+# `python data/factory/make_songs.py` in the RK-00pi tree.
+if [ -d "${RK_SRC}/data/factory/songs" ]; then
+	count=$(find "${RK_SRC}/data/factory/songs" -maxdepth 1 -name '*.rkproj' | wc -l | tr -d ' ')
+	if [ "${count}" != "0" ]; then
+		cp -a "${RK_SRC}/data/factory/songs/"*.rkproj \
+			"${ROOTFS_DIR}${DATA_DIR}/projects/" 2>/dev/null || true
+		echo "  factory songs: ${count} → ${DATA_DIR}/projects/"
+	fi
+fi
 
 # --- config.toml for this panel ----------------------------------------------
 install -d "${ROOTFS_DIR}${CONFIG_DIR}"
@@ -514,6 +524,9 @@ p.tape.color_mode = ColorMode.PER_TRACK
 p.tape.monitor = True
 p.save(starter)
 print("wrote", starter)
+# Factory song count (already copied into projects/ above)
+n_factory = len(list(projects.glob("*.rkproj"))) - (1 if starter.is_file() else 0)
+print(f"projects dir: {n_factory} factory songs + starter")
 PY
 fi
 
