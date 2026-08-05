@@ -1,2 +1,4 @@
 xserver-xorg-input-libinput
 xinput
+evtest
+usbutils

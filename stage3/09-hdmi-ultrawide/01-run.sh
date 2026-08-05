@@ -122,6 +122,16 @@ install -m 755 files/patchbox-display-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-display-status"
 install -m 755 files/patchbox-touch-probe \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-touch-probe"
+install -m 755 files/patchbox-soak \
+	"${ROOTFS_DIR}/usr/local/bin/patchbox-soak"
+# On-device soak checklist (also in the image home dir for SSH sessions).
+if [ -f "${BASE_DIR}/SOAK-PROFILE-A.md" ]; then
+	install -m 644 "${BASE_DIR}/SOAK-PROFILE-A.md" \
+		"${ROOTFS_DIR}/home/${FIRST_USER_NAME}/SOAK-PROFILE-A.md"
+	install -d "${ROOTFS_DIR}/usr/share/doc/patchbox"
+	install -m 644 "${BASE_DIR}/SOAK-PROFILE-A.md" \
+		"${ROOTFS_DIR}/usr/share/doc/patchbox/SOAK-PROFILE-A.md"
+fi
 
 # Compact LXDE panel height for a short 400px-tall bar
 if [ -f "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/.config/lxpanel/LXDE-pi/panels/panel" ]; then
@@ -172,8 +182,14 @@ Audio / MIDI
 
 Checks
   patchbox-display-status
+  sudo patchbox-touch-probe
+  sudo patchbox-soak
   cat /boot/firmware/config.txt | grep hdmi_
   cat /boot/firmware/cmdline.txt
+
+Full soak checklist
+  ~/SOAK-PROFILE-A.md
+  (or /usr/share/doc/patchbox/SOAK-PROFILE-A.md)
 
 Power saving
   LightDM: X -s 0 -dpms (panel stays on)

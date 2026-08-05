@@ -1,0 +1,288 @@
+#!/bin/bash
+# patchbox-soak — Profile A (ElecLab 1280×400 + MIDI hub) on-device checklist.
+#
+# Runs the non-interactive gates from SOAK-PROFILE-A.md. Optional live steps
+# need a human at the panel.
+#
+# Usage:
+#   sudo patchbox-soak
+#   sudo patchbox-soak --touch-live [seconds]
+#   sudo patchbox-soak --midi-live
+#   patchbox-soak --quick          # no sudo required bits skipped softly
+set -euo pipefail
+
+TOUCH_LIVE=0
+TOUCH_SECS=12
+MIDI_LIVE=0
+QUICK=0
+FAILS=0
+WARNS=0
+
+say()  { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
+info() { printf '    %s\n' "$*"; }
+ok()   { printf '\033[1;32mok\033[0m  %s\n' "$*"; }
+warn() { printf '\033[1;33mwarn\033[0m %s\n' "$*"; WARNS=$((WARNS + 1)); }
+bad()  { printf '\033[1;31mFAIL\033[0m %s\n' "$*"; FAILS=$((FAILS + 1)); }
+
+usage() {
+	sed -n '2,14p' "$0" | sed 's/^# \{0,1\}//'
+	exit 0
+}
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--touch-live)
+			TOUCH_LIVE=1
+			if [ "${2:-}" ] && [[ "${2}" =~ ^[0-9]+$ ]]; then
+				TOUCH_SECS=$2
+				shift
+			fi
+			shift
+			;;
+		--midi-live) MIDI_LIVE=1; shift ;;
+		--quick) QUICK=1; shift ;;
+		-h|--help) usage ;;
+		*) echo "unknown: $1 (try --help)"; exit 1 ;;
+	esac
+done
+
+echo "========================================"
+echo " Patchbox Profile A soak"
+echo " $(date -Is 2>/dev/null || date)"
+echo "========================================"
+echo
+
+# --- boot / kiosk -------------------------------------------------------------
+say "Kiosk / boot target"
+if systemctl is-system-running >/dev/null 2>&1 || [ -d /run/systemd/system ]; then
+	def=$(systemctl get-default 2>/dev/null || echo '?')
+	info "default target: ${def}"
+	case "${def}" in
+		multi-user.target) ok "multi-user (kmsdrm kiosk path)" ;;
+		graphical.target) warn "graphical.target — LightDM may steal the panel from kmsdrm" ;;
+		*) warn "unexpected default target: ${def}" ;;
+	esac
+	if systemctl is-active --quiet rk00pi.service 2>/dev/null; then
+		ok "rk00pi.service active"
+	else
+		bad "rk00pi.service not active ($(systemctl is-active rk00pi.service 2>/dev/null || echo missing))"
+		info "fix: sudo systemctl start rk00pi && journalctl -u rk00pi -b -n 40"
+	fi
+else
+	warn "systemd not available in this environment"
+fi
+echo
+
+# --- display ------------------------------------------------------------------
+say "Display (HDMI 1280×400)"
+if [ -f /boot/firmware/config.txt ]; then
+	if grep -qE '^hdmi_cvt=.*1280' /boot/firmware/config.txt 2>/dev/null || \
+	   grep -qE '^hdmi_cvt=1280' /boot/firmware/config.txt 2>/dev/null; then
+		ok "config.txt has hdmi_cvt 1280…"
+	else
+		warn "no hdmi_cvt=1280 in config.txt (EDID-native panel may still be fine)"
+	fi
+fi
+if [ -f /boot/firmware/cmdline.txt ]; then
+	cmd=$(tr -d '\n' < /boot/firmware/cmdline.txt)
+	case " ${cmd} " in
+		*"video=HDMI-A-1:1280x400"*|*"video=HDMI-A-2:1280x400"*)
+			ok "cmdline forces 1280x400 on an HDMI connector"
+			;;
+		*)
+			warn "cmdline missing video=HDMI-A-*:1280x400@…D"
+			;;
+	esac
+fi
+HDMI_OK=0
+if [ -d /sys/class/drm ]; then
+	for c in /sys/class/drm/card*-HDMI-*; do
+		[ -e "$c/status" ] || continue
+		st=$(cat "$c/status" 2>/dev/null || echo '?')
+		modes=""
+		[ -f "$c/modes" ] && modes=$(tr '\n' ' ' < "$c/modes")
+		info "$(basename "$c") status=${st} modes=[${modes}]"
+		case " ${modes} " in
+			*"1280x400"*) HDMI_OK=1 ;;
+		esac
+		[ "$st" = "connected" ] && HDMI_OK=1
+	done
+fi
+if [ "${HDMI_OK}" -eq 1 ]; then
+	ok "HDMI connector present / 1280x400 seen"
+else
+	bad "no connected HDMI (or no 1280x400 mode) — check cable / port / CVT"
+fi
+if [ -x /usr/local/bin/patchbox-display-status ]; then
+	info "(full dump: patchbox-display-status)"
+fi
+echo
+
+# --- touch permissions --------------------------------------------------------
+say "Touch permissions (kmsdrm needs group input)"
+APP_USER=rk00pi
+if id "${APP_USER}" >/dev/null 2>&1; then
+	if id -nG "${APP_USER}" 2>/dev/null | tr ' ' '\n' | grep -qx input; then
+		ok "${APP_USER} ∈ input"
+	else
+		bad "${APP_USER} not in group input — UI paints, taps die"
+		info "fix: sudo patchbox-fix-input-button"
+	fi
+else
+	warn "user ${APP_USER} missing"
+fi
+if systemctl cat rk00pi.service >/dev/null 2>&1; then
+	sg=$(systemctl show -p SupplementaryGroups --value rk00pi.service 2>/dev/null || true)
+	if printf '%s\n' "$sg" | tr ' ' '\n' | grep -qx input; then
+		ok "unit SupplementaryGroups includes input"
+	else
+		bad "unit missing SupplementaryGroups=input (have: ${sg:-none})"
+		info "fix: sudo patchbox-fix-input-button"
+	fi
+	env_all=$(systemctl show -p Environment --value rk00pi.service 2>/dev/null || true)
+	case " ${env_all} " in
+		*"SDL_TOUCH_MOUSE_EVENTS=0"*) ok "SDL_TOUCH_MOUSE_EVENTS=0 (app owns FINGER→mouse)" ;;
+		*) warn "SDL_TOUCH_MOUSE_EVENTS not forced to 0 on unit (double-tap risk)" ;;
+	esac
+fi
+echo
+
+# --- touch hardware -----------------------------------------------------------
+say "Touch hardware (ElecLab = HDMI + USB)"
+USB_PERIPH=0
+if command -v lsusb >/dev/null 2>&1; then
+	USB_PERIPH=$(lsusb 2>/dev/null | grep -vcE '1d6b:000[23]|Linux Foundation [23]\.0 root hub' || true)
+	USB_PERIPH=$(printf '%s' "${USB_PERIPH}" | tr -cd '0-9')
+	USB_PERIPH=${USB_PERIPH:-0}
+	info "non-hub USB devices: ${USB_PERIPH}"
+fi
+TOUCH_LIKE=0
+if [ -r /proc/bus/input/devices ] && \
+	grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts|HID Touch|Weida|Sitronix|Zinitix|Cypress|Melfas|Himax|FocalTech|ElecLab|wch.cn|CH57|USB Touch' \
+		/proc/bus/input/devices 2>/dev/null; then
+	TOUCH_LIKE=1
+	ok "touch-like Name= in /proc/bus/input/devices"
+	awk '
+		/^N: Name=/ { n=$0; sub(/^N: Name=/,"",n); gsub(/"/,"",n) }
+		/^H: Handlers=/ {
+			h=$0; sub(/^H: Handlers=/,"",h)
+			low=tolower(n)
+			if (low ~ /touch|goodix|ilitek|egalax|digitizer|wave|fts|weida|sitronix|zinitix|cypress|himax|focal|eleclab/)
+				print "    " n "  [" h "]"
+		}
+	' /proc/bus/input/devices
+else
+	bad "no touch-like input device — plug ElecLab USB (HDMI alone has no touch)"
+fi
+
+if [ "${TOUCH_LIVE}" -eq 1 ]; then
+	if [ "$(id -u)" -ne 0 ] && [ "${QUICK}" -eq 0 ]; then
+		warn "touch live listen usually needs sudo"
+	fi
+	if [ -x /usr/local/bin/patchbox-touch-probe ]; then
+		say "Live touch probe (${TOUCH_SECS}s) — TAP THE PANEL"
+		if patchbox-touch-probe "${TOUCH_SECS}"; then
+			ok "touch-probe saw events"
+		else
+			rc=$?
+			bad "touch-probe failed (exit ${rc})"
+		fi
+	else
+		warn "patchbox-touch-probe not installed"
+	fi
+else
+	info "skip live tap listen (pass --touch-live)"
+fi
+echo
+
+# --- MIDI graph ---------------------------------------------------------------
+say "MIDI / hub"
+if [ -r /proc/asound/seq/clients ]; then
+	ok "/proc/asound/seq/clients readable"
+	# rough count of non-system clients
+	n=$(grep -cE '^Client[[:space:]]+[0-9]+' /proc/asound/seq/clients 2>/dev/null || echo 0)
+	info "seq clients: ${n}"
+	grep -E '^Client[[:space:]]+[0-9]+' /proc/asound/seq/clients 2>/dev/null | sed 's/^/    /' | head -20 || true
+else
+	bad "cannot read sequencer clients"
+fi
+if [ -x /usr/local/sbin/patchbox-rk00pi-autohub ] || [ -x /usr/local/bin/patchbox-rk00pi-autohub ]; then
+	AH=$(command -v patchbox-rk00pi-autohub || true)
+	[ -z "$AH" ] && AH=/usr/local/sbin/patchbox-rk00pi-autohub
+	say "Autohub (read-only)"
+	if "$AH" 2>&1 | tee /tmp/patchbox-soak-autohub.txt | tail -40; then
+		:
+	fi
+	if grep -qiE 'unbound|does not resolve|0 bound' /tmp/patchbox-soak-autohub.txt 2>/dev/null; then
+		warn "autohub reports unbound endpoints — try: sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi"
+	else
+		ok "autohub report written (/tmp/patchbox-soak-autohub.txt)"
+	fi
+else
+	warn "patchbox-rk00pi-autohub not on PATH"
+fi
+
+if [ "${MIDI_LIVE}" -eq 1 ]; then
+	echo
+	say "MIDI hot-swap (manual — follow each step)"
+	info "A  Plug a class-compliant USB MIDI controller"
+	info "B  Watch:  watch -n1 'grep -E ^Client /proc/asound/seq/clients'"
+	info "C  Fit:    sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi"
+	info "    or panel I/O → PORTS → AUTO FIT"
+	info "D  Route controller → main out; play notes"
+	info "E  Unplug / replug — route should restore without restart"
+	info "F  Second USB device — independent route"
+	info "Full matrix: see /home/patch/SOAK-PROFILE-A.md or repo SOAK-PROFILE-A.md"
+fi
+echo
+
+# --- companion ----------------------------------------------------------------
+say "Companion (remote MIDI router UI)"
+if [ -f /etc/rk00pi/config.toml ]; then
+	comp=$(awk '/^\[companion\]/{p=1;next} /^\[/{p=0} p' /etc/rk00pi/config.toml)
+	en=$(printf '%s\n' "$comp" | awk -F= '/^enabled/{gsub(/ /,"",$2); print $2; exit}')
+	bind=$(printf '%s\n' "$comp" | awk -F= '/^bind/{gsub(/ /,"",$2); gsub(/"/,"",$2); print $2; exit}')
+	port=$(printf '%s\n' "$comp" | awk -F= '/^port/{gsub(/ /,"",$2); print $2; exit}')
+	port=${port:-8787}
+	if [ "${en}" = "true" ] || [ "${en}" = "1" ]; then
+		ok "companion enabled (bind=${bind:-?} port=${port})"
+		if [ "${bind}" = "127.0.0.1" ]; then
+			warn "bind is loopback only — phone on LAN cannot reach it; set bind = \"0.0.0.0\""
+		fi
+		if [ -f /var/lib/rk00pi/companion-token ]; then
+			ok "token file present (/var/lib/rk00pi/companion-token)"
+		else
+			warn "no companion-token yet — start rk00pi once, then: sudo cat /var/lib/rk00pi/companion-token"
+		fi
+		if command -v ss >/dev/null 2>&1; then
+			if ss -lnt 2>/dev/null | grep -qE ":${port}\\b"; then
+				ok "something listening on :${port}"
+			else
+				warn "nothing listening on :${port} yet (is rk00pi running?)"
+			fi
+		fi
+		host=$(hostname 2>/dev/null || echo patchbox)
+		info "phone: http://${host}.local:${port}  or  http://<pi-ip>:${port}"
+	else
+		warn "companion disabled in config.toml — enable for remote routing matrix"
+	fi
+else
+	warn "/etc/rk00pi/config.toml missing"
+fi
+echo
+
+# --- summary ------------------------------------------------------------------
+echo "========================================"
+if [ "${FAILS}" -eq 0 ]; then
+	printf '\033[1;32mPASS\033[0m  %d hard fail(s), %d warning(s)\n' "${FAILS}" "${WARNS}"
+else
+	printf '\033[1;31mFAIL\033[0m  %d hard fail(s), %d warning(s)\n' "${FAILS}" "${WARNS}"
+fi
+echo "Next:"
+info "docs:    SOAK-PROFILE-A.md (full matrix + sign-off table)"
+info "touch:   sudo patchbox-touch-probe"
+info "repair:  sudo patchbox-fix-input-button"
+info "midi:    sudo patchbox-rk00pi-autohub --apply && sudo systemctl restart rk00pi"
+info "status:  patchbox-rk00pi-status"
+echo "========================================"
+[ "${FAILS}" -eq 0 ]

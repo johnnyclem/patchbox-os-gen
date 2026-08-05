@@ -77,7 +77,7 @@ pick_event() {
 				ev=$(printf '%s\n' "$handlers" | grep -oE 'event[0-9]+' | head -1 || true)
 				[ -n "$ev" ] || continue
 				case "$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')" in
-					*touch*|*goodix*|*ilitek*|*egalax*|*digitizer*|*fts*|*wave*)
+					*touch*|*goodix*|*ilitek*|*egalax*|*digitizer*|*fts*|*wave*|*weida*|*sitronix*|*zinitix*|*cypress*|*himax*|*focal*|*melfas*|*eleclab*|*elecrow*|*wch.cn*|*ch57*)
 						echo "/dev/input/$ev"
 						return 0
 						;;
@@ -102,7 +102,7 @@ if command -v lsusb >/dev/null 2>&1; then
 fi
 TOUCH_LIKE=0
 if [ -r /proc/bus/input/devices ] && \
-	grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts|HID Touch' \
+	grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts|HID Touch|Weida|Sitronix|Zinitix|Cypress|Himax|FocalTech|Melfas|ElecLab|Elecrow|wch\.cn|CH57' \
 		/proc/bus/input/devices 2>/dev/null; then
 	TOUCH_LIKE=1
 fi

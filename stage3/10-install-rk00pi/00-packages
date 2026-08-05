@@ -15,3 +15,6 @@ libportmidi-dev
 libdrm2
 libgbm1
 rsync
+# Companion remote routing UI (mDNS name → http://hostname.local:8787)
+avahi-daemon
+libnss-mdns

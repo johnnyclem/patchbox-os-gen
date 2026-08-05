@@ -43,7 +43,7 @@ if [ -r /proc/bus/input/devices ]; then
 			print "  " n "  [" h "]"
 		}
 	' /proc/bus/input/devices
-	if ! grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts' \
+	if ! grep -qiE 'Touch|Goodix|ILITEK|eGalax|Digitizer|WaveShare|fts|Weida|Sitronix|Zinitix|Cypress|Himax|FocalTech|ElecLab|Elecrow|wch\.cn' \
 		/proc/bus/input/devices 2>/dev/null; then
 		echo "  WARNING: no touch-like Name= found."
 		echo "  ElecLab 1280×400 needs HDMI + USB. HDMI alone = picture, zero touch."

@@ -118,6 +118,75 @@ if grep -qE '^prefer_pisound' "${ROOTFS_DIR}${CONFIG_DIR}/config.toml"; then
 	fi
 fi
 
+# Companion: remote MIDI routing matrix + backup (token auth, no TLS).
+# Product default ON (ENABLE_RK00PI_COMPANION=1) for the hot-swap hub story.
+COMPANION_ON="${ENABLE_RK00PI_COMPANION:-1}"
+COMPANION_BIND="${RK00PI_COMPANION_BIND:-0.0.0.0}"
+COMPANION_PORT="${RK00PI_COMPANION_PORT:-8787}"
+COMPANION_ADV="${RK00PI_COMPANION_ADVERTISE:-1}"
+if grep -qE '^\[companion\]' "${ROOTFS_DIR}${CONFIG_DIR}/config.toml"; then
+	if [ "${COMPANION_ON}" = "1" ]; then
+		# Rewrite keys inside the [companion] table only.
+		awk -v bind="${COMPANION_BIND}" -v port="${COMPANION_PORT}" -v adv="${COMPANION_ADV}" '
+			BEGIN { in_c = 0 }
+			/^\[companion\]/ { in_c = 1; print; next }
+			/^\[/ { in_c = 0 }
+			in_c && /^enabled[[:space:]]*=/ { print "enabled = true"; next }
+			in_c && /^bind[[:space:]]*=/ { print "bind = \"" bind "\""; next }
+			in_c && /^port[[:space:]]*=/ { print "port = " port; next }
+			in_c && /^advertise[[:space:]]*=/ {
+				if (adv == "1") print "advertise = true";
+				else print "advertise = false";
+				next
+			}
+			in_c && /^allow_hub_edit[[:space:]]*=/ { print "allow_hub_edit = true"; next }
+			{ print }
+		' "${ROOTFS_DIR}${CONFIG_DIR}/config.toml" > "${ROOTFS_DIR}${CONFIG_DIR}/config.toml.companion"
+		mv "${ROOTFS_DIR}${CONFIG_DIR}/config.toml.companion" \
+			"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
+		echo "  [companion] enabled bind=${COMPANION_BIND} port=${COMPANION_PORT} advertise=${COMPANION_ADV}"
+	else
+		awk '
+			BEGIN { in_c = 0 }
+			/^\[companion\]/ { in_c = 1; print; next }
+			/^\[/ { in_c = 0 }
+			in_c && /^enabled[[:space:]]*=/ { print "enabled = false"; next }
+			{ print }
+		' "${ROOTFS_DIR}${CONFIG_DIR}/config.toml" > "${ROOTFS_DIR}${CONFIG_DIR}/config.toml.companion"
+		mv "${ROOTFS_DIR}${CONFIG_DIR}/config.toml.companion" \
+			"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
+		echo "  [companion] disabled (ENABLE_RK00PI_COMPANION!=1)"
+	fi
+fi
+# mDNS advertisement for http://<hostname>.local:PORT
+if [ "${COMPANION_ON}" = "1" ] && [ "${COMPANION_ADV}" = "1" ]; then
+	if [ -f "${RK_SRC}/deploy/avahi/rk00pi-companion.service" ]; then
+		install -d "${ROOTFS_DIR}/etc/avahi/services"
+		# Port in the XML must match config.
+		sed "s|<port>8787</port>|<port>${COMPANION_PORT}</port>|" \
+			"${RK_SRC}/deploy/avahi/rk00pi-companion.service" \
+			> "${ROOTFS_DIR}/etc/avahi/services/rk00pi-companion.service"
+		echo "  avahi: /etc/avahi/services/rk00pi-companion.service (port ${COMPANION_PORT})"
+	else
+		echo "  warning: deploy/avahi/rk00pi-companion.service missing — no mDNS name"
+	fi
+fi
+
+# --- power privileges (Diagnostics SHUT DOWN / REBOOT / RESTART) -------------
+# Service user has no seat → polkit refuses systemctl poweroff. Sudoers is
+# the appliance path; button_server and the panel both use `sudo -n systemctl`.
+if [ -f "${RK_SRC}/deploy/sudoers.d/rk00pi-power" ]; then
+	install -d "${ROOTFS_DIR}/etc/sudoers.d"
+	install -m 440 "${RK_SRC}/deploy/sudoers.d/rk00pi-power" \
+		"${ROOTFS_DIR}/etc/sudoers.d/rk00pi-power"
+	# Rewrite the username if the appliance user is not the default.
+	if [ "${APP_USER}" != "rk00pi" ]; then
+		sed -i "s/^rk00pi /${APP_USER} /" \
+			"${ROOTFS_DIR}/etc/sudoers.d/rk00pi-power"
+	fi
+	echo "  sudoers: /etc/sudoers.d/rk00pi-power (poweroff/reboot/restart)"
+fi
+
 # --- systemd unit ------------------------------------------------------------
 # Includes RuntimeDirectory=rk00pi for The Button socket (/run/rk00pi/button.sock)
 # and SupplementaryGroups=… input for USB-HID touch under kmsdrm.
@@ -289,6 +358,11 @@ MIDI silent? (devices listed on DIAGNOSTICS, nothing plays or records)
   ${DATA_DIR}/presets/auto.rkhub. To stop it touching the hub at all:
   sudo touch /etc/rk00pi/autohub.disabled
 
+Power (clean reboot / shutdown — no hard unplug)
+  On the panel: Set → DIAG → SHUT DOWN or REBOOT (tap twice to confirm)
+  Or:  sudo systemctl poweroff / reboot
+  App restart only: RESTART on Diagnostics (or systemctl restart rk00pi)
+
 Field repair (touch dead / button dead)
   sudo patchbox-fix-input-button
   # or: sudo patchbox-fix-input-button --dry-run
@@ -312,6 +386,20 @@ Desktop (optional, not the default)
   Back to kiosk:
     sudo systemctl set-default multi-user.target
     sudo systemctl disable lightdm && sudo systemctl enable rk00pi && sudo reboot
+
+Companion (remote MIDI router UI)
+  Default ON for this product image (token auth, no TLS — trusted LAN only).
+  Phone:  http://${HOSTNAME}.local:${RK00PI_COMPANION_PORT:-8787}
+  Token:  sudo cat /var/lib/rk00pi/companion-token
+  Config: /etc/rk00pi/config.toml  [companion]
+  Disable:
+    sudo sed -i '/^\[companion\]/,/^\[/{s/^enabled = .*/enabled = false/}' \\
+      /etc/rk00pi/config.toml && sudo systemctl restart rk00pi
+
+On-device soak (ElecLab + MIDI hub)
+  sudo patchbox-soak
+  sudo patchbox-soak --touch-live
+  ~/SOAK-PROFILE-A.md
 
 SSH
   ssh ${FIRST_USER_NAME}@${HOSTNAME}.local

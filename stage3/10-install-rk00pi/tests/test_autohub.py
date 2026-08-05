@@ -55,8 +55,8 @@ PROC_PIMIDI = """\
 Client   0 : "System" [Kernel]
   Port   0 : "Timer" (Rwe-)
 Client  20 : "pimidi0" [Kernel Card=1]
-  Port   0 : "pimidi-a" (RWeX)
-  Port   1 : "pimidi-b" (RWeX)
+  Port   0 : "a" (RWeX)
+  Port   1 : "b" (RWeX)
 """
 
 ACONNECT_IN = """\
@@ -73,13 +73,13 @@ PIMIDI_HUB = {
     "profile": "custom",
     "endpoints": [
         {"id": "din_in_a", "kind": "din_in", "client_name": "pimidi",
-         "port_name": "pimidi-a"},
+         "port_name": "a"},
         {"id": "din_in_b", "kind": "din_in", "client_name": "pimidi",
-         "port_name": "pimidi-b"},
+         "port_name": "b"},
         {"id": "din_out_a", "kind": "din_out", "client_name": "pimidi",
-         "port_name": "pimidi-a"},
+         "port_name": "a"},
         {"id": "din_out_b", "kind": "din_out", "client_name": "pimidi",
-         "port_name": "pimidi-b"},
+         "port_name": "b"},
         {"id": "seq", "kind": "seq"},
         {"id": "rec", "kind": "rec"},
     ],
@@ -184,12 +184,32 @@ Client  24 : "Arturia KeyStep 37" [Kernel Card=1]
 def test_pimidi_rig_keeps_the_two_trs_jacks_apart():
     hub = autohub.build_hub(autohub.parse_proc_clients(PROC_PIMIDI))
     ids = endpoints(hub)
-    assert ids["din_out_a"]["port_name"] == "pimidi-a"
-    assert ids["din_out_b"]["port_name"] == "pimidi-b"
+    assert ids["din_out_a"]["port_name"] == "a"
+    assert ids["din_out_b"]["port_name"] == "b"
     # Client match stays loose: the real client is "pimidi0" (board select).
     assert ids["din_out_a"]["client_name"] == "pimidi"
     dests = {b["dest_endpoint"] for b in hub["buses"]}
     assert {"din_out_a", "din_out_b", "rec"} == dests
+
+
+PROC_BOTH = """\
+Client   0 : "System" [Kernel]
+  Port   0 : "Timer" (Rwe-)
+Client  20 : "pimidi0" [Kernel Card=1]
+  Port   0 : "a" (RWeX)
+  Port   1 : "b" (RWeX)
+Client  28 : "pisound" [Kernel Card=2]
+  Port   0 : "pisound MIDI PS-1YJZ1HQ" (RWeX)
+"""
+
+
+def test_both_hats_are_not_exclusive():
+    hub = autohub.build_hub(autohub.parse_proc_clients(PROC_BOTH))
+    ids = endpoints(hub)
+    assert "din_out_a" in ids and "din_out_ps" in ids
+    assert ids["din_out_a"]["client_name"] == "pimidi"
+    assert ids["din_out_ps"]["client_name"] == "pisound"
+    assert ids["din_out_ps"]["port_name"] == "pisound MIDI"
 
 
 def test_send_only_device_gets_no_output_endpoint():
@@ -226,6 +246,19 @@ def test_a_hub_that_already_fits_is_left_alone():
     assert not change and "already fits" in why
 
 
+def test_a_full_pimidi_hub_expands_when_pisound_appears():
+    """Fully bound is not sacred if more hardware can bind."""
+    pimidi_only = autohub.parse_proc_clients(PROC_PIMIDI)
+    both = autohub.parse_proc_clients(PROC_BOTH)
+    current = autohub.build_hub(pimidi_only)
+    generated = autohub.build_hub(both)
+    # Current hub binds 4/4 on the dual-HAT graph (Pimidi jacks still there).
+    assert autohub.fits(current, both) == (4, 4)
+    assert autohub.fits(generated, both)[0] == 6
+    change, why = autohub.should_apply(current, generated, both)
+    assert change and "6" in why
+
+
 def test_a_partly_bound_hub_is_not_replaced_by_a_worse_one():
     # Pimidi rig, but the project only declares the A jack: 2/2 resolve, so
     # the user's deliberately smaller hub survives.
@@ -233,9 +266,9 @@ def test_a_partly_bound_hub_is_not_replaced_by_a_worse_one():
     hand_made = {
         "endpoints": [
             {"id": "din_in_a", "kind": "din_in", "client_name": "pimidi",
-             "port_name": "pimidi-a"},
+             "port_name": "a"},
             {"id": "din_out_a", "kind": "din_out", "client_name": "pimidi",
-             "port_name": "pimidi-a"},
+             "port_name": "a"},
         ],
         "buses": [], "routes": [],
     }

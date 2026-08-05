@@ -1,23 +1,34 @@
-# Handoff — Patchbox OS gen (Pi 5 + Pisound + HDMI + RK-00pi)
+# Handoff — Patchbox OS gen (Pi 5 + Pimidi + ElecLab HDMI + RK-00pi)
 
-**Date:** 2026-08-01  
+**Date:** 2026-08-04  
 **Branch:** `patchbox-2024-01`  
 **Repo:** `/Users/johnnyclem/Desktop/Repos/patchbox-os-gen`
+
+**Focus (2026-08-04):** Profile A only — ElecLab 1280×400 + multi/hot-swap MIDI
+hub + companion routing UI. HyperPixel 4 glass is cracked/parked; do not spend
+bring-up time on Profile B unless someone rebuilds that hardware path.
+
+**On-device soak:** [`SOAK-PROFILE-A.md`](SOAK-PROFILE-A.md) · on image as
+`~/SOAK-PROFILE-A.md` and `sudo patchbox-soak`.
 
 ---
 
 ## Current product stack
 
-### Profile A — HDMI ultrawide (default `config`)
+### Profile A — HDMI ultrawide (default `config`) — **active product**
 
 ```text
 Raspberry Pi 5
-  ├── Blokas Pimidi (sel=0) — 2×2 TRS MIDI
-  ├── HDMI 1280×400 + USB touch (ElecLab ILI)
-  └── RK-00pi kiosk · hub pimidi-2x2 · soft tape
+  ├── Blokas Pimidi (sel=0) — 2×2 TRS MIDI  (or Pisound / USB-only)
+  ├── ElecLab 7.4″ HDMI 1280×400 + USB capacitive touch
+  └── RK-00pi kiosk
+        · hub binds by ALSA name (hotplug)
+        · autohub at every start (USB devices included)
+        · companion :8787 routing matrix (token auth, LAN)
+        · soft tape
 ```
 
-### Profile B — HyperPixel 4.0" DPI (`config.hyperpixel4-pimidi` / `.example`)
+### Profile B — HyperPixel 4.0" DPI (`config.hyperpixel4-pimidi` / `.example`) — **parked**
 
 **Build command (required):**
 
@@ -79,8 +90,8 @@ No GPIO display. Pisound owns the header for audio/MIDI. Display does not compet
 **App source:** git submodule `RK-00pi` → `git@github.com:johnnyclem/RK-00pi.git`  
 Baked into the image by `stage3/10-install-rk00pi` as `/opt/rk00pi`.
 
-**Submodule tip (2026-08-01):** `15e389a` — designer UI pass + PiSound Button (M10).  
-Shipped default map: `CLICK_1=play_stop`, `CLICK_2=record_toggle`, `HOLD_1S=save_project`, `HOLD_5S=panic`.
+**Submodule tip (2026-08-04):** `c9dfa21` — midi/audio unified setup + hub fit
+(`core/hub_fit.py`) + companion remote routing UI (raspimidihub parity 0–3).
 
 ---
 
@@ -90,12 +101,17 @@ Shipped default map: `CLICK_1=play_stop`, `CLICK_2=record_toggle`, `HOLD_1S=save
 |----------|---------|---------|
 | `ENABLE_RK00PI` | **1** | Install main app from submodule |
 | `ENABLE_RK00PI_SERVICE` | **1** | `systemctl enable rk00pi` |
-| `ENABLE_RK00PI_BUTTON` | **1** | Wire pisound-btn → RK-00pi socket |
+| `ENABLE_RK00PI_BUTTON` | **0** | Wire pisound-btn → RK-00pi socket (off when Pimidi is primary) |
 | `ENABLE_RK00PI_AUTOHUB` | **1** | Re-fit the hub to the live ALSA graph at every start |
+| `ENABLE_RK00PI_COMPANION` | **1** | LAN companion routing UI + backup (token; no TLS) |
+| `RK00PI_COMPANION_BIND` | `0.0.0.0` | Companion listen address |
+| `RK00PI_COMPANION_PORT` | `8787` | Companion HTTP port |
+| `RK00PI_COMPANION_ADVERTISE` | **1** | Avahi `_http._tcp` name |
 | `RK00PI_HUB_PRESET` | follows `ENABLE_PIMIDI` | `pimidi-2x2` on a Pimidi rig, else `rk008` (Pisound DIN) |
 | `RK00PI_WIDTH` / `HEIGHT` | (HDMI dims) | `/etc/rk00pi/config.toml` panel size |
 | `ENABLE_HDMI_ULTRAWIDE` | **1** | Custom HDMI mode **1280×400@60** |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Override if panel differs |
+| `ENABLE_HYPERPIXEL4` | **0** | Parked — DPI profile |
 | `ENABLE_WAVESHARE_DPI` | **0** | 3.5″ GPIO DPI (parked) |
 | `ENABLE_INKY` / `ENABLE_INKY_UI` | **0** | E-paper (parked) |
 | `ENABLE_RASPIAUDIO` | **0** | I2S HAT (parked) |
@@ -133,6 +149,10 @@ kmsdrm fails with `pygame.error: kmsdrm not available`.
 | `/usr/local/bin/rk00pi-btn` | stdlib client called by pisound-btn scripts |
 | `/usr/local/sbin/patchbox-rk00pi-autohub` | Fits the hub to this unit's MIDI hardware (`ExecStartPre`) |
 | `/etc/rk00pi/autohub.disabled` | Touch it to stop autohub touching the hub |
+| `/var/lib/rk00pi/companion-token` | Companion auth token (generated first boot) |
+| `/etc/avahi/services/rk00pi-companion.service` | mDNS for `http://hostname.local:8787` |
+| `/usr/local/bin/patchbox-soak` | Profile A soak gates (display + touch + MIDI + companion) |
+| `~/SOAK-PROFILE-A.md` | Full soak checklist + sign-off table |
 | `/etc/pisound.conf` | PiSound gesture → `rk00pi_{click,hold}.sh` (`.rk00pi.bak` backup) |
 | `rk00pi.service` | Kiosk unit (`SDL_VIDEODRIVER=kmsdrm`, `RuntimeDirectory=rk00pi`) |
 
@@ -444,13 +464,33 @@ ssh patch@patchbox.local 'sudo install -m 644 /tmp/app.py /opt/rk00pi/gui/app.py
   && sudo patchbox-touch-probe'
 ```
 
+## Power / clean reboot (panel)
+
+Set → **DIAG** → **SHUT DOWN** / **REBOOT** / **RESTART** (double-tap confirm).
+Saves first, clears unclean marker, uses `sudo -n systemctl` via
+`/etc/sudoers.d/rk00pi-power`. No more hard-unplug for software changes.
+
+## Screensaver (LCD burn-in)
+
+`[display] screensaver_sec = 120` (default). After 2 min without touch/key
+the panel goes near-black with a drifting dim tempo mark; engine keeps
+running. First tap wakes only (does not hit a control). Set `0` to disable.
+
+## Multi-HAT MIDI (Pimidi + Pisound)
+
+AUTO FIT / boot autohub now keep **both** HATs: Pimidi → `din_*_a/b`,
+Pisound → `din_*_ps`. I/O → PORTS → **DIN DEVICE** shows `pimidi+pisound`
+(or step to one family only). Per-endpoint rows still assign individual jacks.
+
 ## Next session ideas
 
-1. On-device ElecLab soak: `patchbox-touch-probe` then Launch-grid taps  
-2. Verify Pisound DIN MIDI + prefer_pisound path in journal  
-3. On-device pass for The Button (CI has no pisound-btn hardware)  
+1. **P0 — ElecLab soak** (see `SOAK-PROFILE-A.md`): HDMI+USB cables,  
+   `sudo patchbox-soak --touch-live`, Launch-grid taps  
+2. **P0 — Multi USB MIDI hot-swap**: autohub / I/O AUTO FIT, dual devices,  
+   unplug/replug without restart  
+3. **P1 — Companion matrix** from phone: token, live route edit mid-play  
 4. Gate driver still `null` until buffered stage is signed off  
-5. Pimidi only if pins free with Pisound (or USB MIDI)
+5. HyperPixel Profile B — parked (glass dead)
 
 ---
 
@@ -459,14 +499,15 @@ ssh patch@patchbox.local 'sudo install -m 644 /tmp/app.py /opt/rk00pi/gui/app.py
 ```text
 config
 .gitmodules
-RK-00pi/                          # submodule (main app)
+SOAK-PROFILE-A.md                 # on-device soak (Profile A)
+RK-00pi/                          # submodule (main app) @ c9dfa21+
 apps/chordranger/                 # second app (in-repo, not a submodule)
 stage3/02-install-pisound/
-stage3/09-hdmi-ultrawide/
-stage3/10-install-rk00pi/         # bake app into image
-stage3/10-install-rk00pi/files/patchbox-rk00pi-autohub   # fit hub to the rig
-stage3/10-install-rk00pi/tests/   # pytest for the above (CI: rk00pi-stage)
-stage3/13-install-chordranger/    # bake ChordRanger into image
+stage3/09-hdmi-ultrawide/         # ElecLab HDMI + touch helpers + patchbox-soak
+stage3/10-install-rk00pi/         # bake app + companion + autohub
+stage3/10-install-rk00pi/files/patchbox-rk00pi-autohub
+stage3/10-install-rk00pi/tests/
+stage3/13-install-chordranger/
 HANDOFF.md
 deploy/image_*.zip                # after successful build
 ```

@@ -247,7 +247,7 @@ def _match_strings(kind: str, client: str, port: str) -> tuple[str, str]:
     tight enough not to grab the wrong port:
 
     * Pimidi — client "pimidi" (the real one is "pimidi0" + board select),
-      port exact ("pimidi-a"/"pimidi-b") because the two jacks must not swap.
+      port exact ("a"/"b" on current snd_pimidi) so the two jacks must not swap.
     * Pisound — the DIN port carries the board's serial ("pisound MIDI
       PS-1YJZ1HQ"), so match the stable prefix. That also excludes the
       "pisound-ctl" client, which "pisound" alone would happily match.
@@ -305,19 +305,30 @@ def build_hub(ports: list[Port]) -> dict:
                          client, port)
         return bus
 
-    # --- DIN jacks: Pimidi's two TRS pairs, else the Pisound's one ------------
-    if devices.get(PIMIDI):
+    # --- DIN jacks: every HAT on the graph (not exclusive) --------------------
+    # A unit can expose Pimidi *and* Pisound at once. Taking only the first
+    # family left the other HAT unbound and forced the panel DIN DEVICE row
+    # into a one-or-the-other choice.
+    has_pimidi = bool(devices.get(PIMIDI))
+    has_pisound = bool(devices.get(PISOUND))
+
+    if has_pimidi:
         for index, jack in enumerate(devices[PIMIDI]):
             suffix = chr(ord("a") + index)          # din_in_a, din_in_b, …
             bus = add_jack(PIMIDI, jack, f"din_in_{suffix}",
                            f"din_out_{suffix}", f"OUT {suffix.upper()}")
             if jack.has_in:
                 sources.append((f"din_in_{suffix}", bus))
-    elif devices.get(PISOUND):
+
+    if has_pisound:
         jack = devices[PISOUND][0]
-        bus = add_jack(PISOUND, jack, "din_in", "din_out", "MAIN")
+        if has_pimidi:
+            in_id, out_id, bus_name = "din_in_ps", "din_out_ps", "PISOUND"
+        else:
+            in_id, out_id, bus_name = "din_in", "din_out", "MAIN"
+        bus = add_jack(PISOUND, jack, in_id, out_id, bus_name)
         if jack.has_in:
-            sources.append(("din_in", bus))
+            sources.append((in_id, bus))
 
     # --- USB devices ----------------------------------------------------------
     for index, jack in enumerate(devices.get(USB, ())):
@@ -367,21 +378,21 @@ def should_apply(current: dict, generated: dict,
                  ports: list[Port]) -> tuple[bool, str]:
     """Whether to overwrite the project's hub, and why (for the journal).
 
-    The rule is deliberately conservative: a hub is only replaced when the
-    generated one binds *strictly more* endpoints. A rig where everything
-    already resolves is left alone, and so is a rig with no MIDI hardware at
-    all — on a silent unit the user's own routing is worth more than a hub
-    generated from an empty graph.
+    Replace when the generated hub binds *strictly more* endpoints — that
+    covers the classic "wrong HAT preset" case and the dual-HAT case (a
+    fully bound Pimidi-only hub must still expand when Pisound appears).
+    Leave the project alone when the generated graph is no richer, including
+    empty-hardware boots where the user's routing is worth more than silence.
     """
     have, want = fits(current, ports)
     new_have, new_want = fits(generated, ports)
+    if new_have > have:
+        return True, (f"{have}/{want} endpoints resolve against this rig; "
+                      f"generated hub resolves {new_have}/{new_want}")
     if want and have == want:
         return False, f"hub already fits ({have}/{want} endpoints bound)"
-    if new_have <= have:
-        return False, (f"generated hub is no better ({new_have}/{new_want} vs "
-                       f"{have}/{want}) — leaving the project alone")
-    return True, (f"{have}/{want} endpoints resolve against this rig; "
-                  f"generated hub resolves {new_have}/{new_want}")
+    return False, (f"generated hub is no better ({new_have}/{new_want} vs "
+                   f"{have}/{want}) — leaving the project alone")
 
 
 def _write_json(path: Path, payload: dict, model: Path | None = None) -> None:

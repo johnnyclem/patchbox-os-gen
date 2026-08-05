@@ -525,14 +525,16 @@ on the unit with `patchbox-rk00pi-autohub` (read-only) and repair with
 |----------|---------|---------|
 | `ENABLE_RK00PI` | `1` | Install RK-00pi from submodule |
 | `ENABLE_RK00PI_SERVICE` | `1` | Enable kiosk unit at boot |
-| `ENABLE_RK00PI_BUTTON` | `1` | Wire PiSound Button → RK-00pi gestures |
+| `ENABLE_RK00PI_BUTTON` | `0` | Wire PiSound Button → RK-00pi gestures |
 | `ENABLE_RK00PI_AUTOHUB` | `1` | Fit the MIDI hub to the live ALSA graph at every start |
+| `ENABLE_RK00PI_COMPANION` | `1` | LAN companion routing UI + backup (`:8787`, token auth) |
+| `RK00PI_COMPANION_BIND` / `PORT` / `ADVERTISE` | `0.0.0.0` / `8787` / `1` | Companion listen + mDNS |
 | `RK00PI_HUB_PRESET` | follows `ENABLE_PIMIDI` | Starter hub: `pimidi-2x2`, else `rk008` (Pisound DIN) |
 | `ENABLE_CHORDRANGER` | `1` | Install ChordRanger from `apps/chordranger` |
 | `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi |
-| `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch (Profile A) |
+| `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch (Profile A — primary) |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | HDMI panel geometry |
-| `ENABLE_HYPERPIXEL4` | `0` | Pimoroni HyperPixel 4 DPI (Profile B; use `-c config.hyperpixel4-pimidi`) |
+| `ENABLE_HYPERPIXEL4` | `0` | Pimoroni HyperPixel 4 DPI (Profile B — parked) |
 | `HYPERPIXEL_WIDTH` / `HEIGHT` / `ROTATE` | 800 / 480 / left | DPI geometry + landscape rotation |
 | `ENABLE_WAVESHARE_DPI` | `0` | GPIO DPI (conflicts with Pisound) |
 | `ENABLE_INKY` | `0` | E-paper software |

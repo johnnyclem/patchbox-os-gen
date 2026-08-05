@@ -7,11 +7,21 @@
 KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TOUCHSCREEN}=="1", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="event*", SUBSYSTEM=="input", ENV{ID_INPUT_TABLET}=="1", MODE="0660", GROUP="input", TAG+="uaccess"
 
-# Name-based catchalls for common HID touch controllers
+# Name-based catchalls for common HID touch controllers (ElecLab bar and clones)
 KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Touch*", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Goodix*", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*ILITEK*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Ilitek*", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*eGalax*", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*WaveShare*", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*ElecLab*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Elecrow*", MODE="0660", GROUP="input", TAG+="uaccess"
 KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*HID Touch*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Weida*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Sitronix*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Zinitix*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Cypress*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Himax*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*FocalTech*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*Melfas*", MODE="0660", GROUP="input", TAG+="uaccess"
+KERNEL=="event*", SUBSYSTEM=="input", ATTRS{name}=="*wch.cn*", MODE="0660", GROUP="input", TAG+="uaccess"

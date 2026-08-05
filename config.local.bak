@@ -1,0 +1,27 @@
+# Local secrets + machine overrides (gitignored).
+# Keep this file secrets/machine-only — do NOT put a full display profile here.
+# Display profiles:
+#   Profile A (HDMI bar, default):  ./build-docker.sh
+#   Profile B (HyperPixel 4 DPI):   ./build-docker.sh -c config.hyperpixel4-pimidi
+
+# Required for client WiFi join + RF unblock on Bookworm
+WPA_COUNTRY="US"
+WPA_ESSID="clemhaus_IoT"
+WPA_PASSWORD="harleydanger"
+
+# When home WiFi is configured, leave the onboard hotspot off so the radio
+# can join your AP (override to 1 if you still want the Patchbox hotspot).
+ENABLE_WIFI_HOTSPOT=0
+
+# Machine-specific (works on both profiles)
+ENABLE_PIMIDI=1
+PIMIDI_SEL=1
+ENABLE_RK00PI=1
+ENABLE_RK00PI_SERVICE=1
+ENABLE_RK00PI_BUTTON=1
+ENABLE_RK00PI_AUTOHUB=1
+RK00PI_HUB_PRESET=pimidi-2x2
+
+# No Pisound / Inky / I2S on this unit
+ENABLE_RASPIAUDIO=0
+ENABLE_INKY=0

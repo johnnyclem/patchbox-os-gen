@@ -3,7 +3,7 @@
 # Product path when Pisound is off the header (Pi 5 + HDMI bar + RK-00pi).
 #
 # ENABLE_PIMIDI=1 (default when set in config) installs packages, writes
-# dtoverlay=pimidi,sel=N, and points the appliance hub at pimidi-a/b.
+# dtoverlay=pimidi,sel=N, and points the appliance hub at seq ports a/b.
 
 if [ "${ENABLE_PIMIDI}" != "1" ]; then
 	echo "ENABLE_PIMIDI!=1 — skipping Pimidi stage"
@@ -86,8 +86,9 @@ Software
 
 ALSA names (sel=0)
   client  pimidi0
-  ports   pimidi-a  (TRS jack A, BOTH)
-          pimidi-b  (TRS jack B, BOTH)
+  seq ports   a  (TRS jack A, BOTH)
+              b  (TRS jack B, BOTH)
+  amidi may list hw as pimidi0-a / pimidi0-b — the hub matches seq names.
 
 RK-00pi hub
   Factory preset: pimidi-2x2.rkhub

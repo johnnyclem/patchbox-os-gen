@@ -60,6 +60,13 @@ fi
 # up USB MIDI devices the baked preset knows nothing about. Set to 0 to boot
 # strictly what the preset says. On the unit: /etc/rk00pi/autohub.disabled
 ENABLE_RK00PI_AUTOHUB="${ENABLE_RK00PI_AUTOHUB:-1}"
+# Companion web UI = remote MIDI routing matrix + backup (token auth, no TLS).
+# Product default ON for the hot-swap hub story: bind 0.0.0.0, allow mid-set
+# hub edits, optional mDNS. Set 0 for a stage image that must not listen.
+ENABLE_RK00PI_COMPANION="${ENABLE_RK00PI_COMPANION:-1}"
+RK00PI_COMPANION_BIND="${RK00PI_COMPANION_BIND:-0.0.0.0}"
+RK00PI_COMPANION_PORT="${RK00PI_COMPANION_PORT:-8787}"
+RK00PI_COMPANION_ADVERTISE="${RK00PI_COMPANION_ADVERTISE:-1}"
 # Empty → HyperPixel dims when ENABLE_HYPERPIXEL4=1, else HDMI dims
 RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
