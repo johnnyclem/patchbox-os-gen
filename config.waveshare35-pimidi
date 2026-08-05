@@ -1,0 +1,58 @@
+# Profile C: Pi + Waveshare 3.5" DPI 640×480 capacitive + Blokas Pimidi
+#
+# Stack (physical):
+#   Raspberry Pi
+#     └── Blokas Pimidi (40-pin) — 2×2 TRS MIDI
+#           └── Waveshare 3.5inch DPI LCD (640×480 IPS, Goodix touch)
+#
+# Usage:
+#   ./build-docker.sh -c config.waveshare35-pimidi
+#   ./build-docker.sh config.waveshare35-pimidi   # bare path also works
+#
+# WiFi / secrets stay in config.local (do not put passwords here):
+#   cp config.local.example config.local   # fill WPA_* only
+#
+# GPIO note (read this):
+#   Waveshare 3.5 DPI uses almost the entire 40-pin (DPI666 + touch I2C +
+#   backlight PWM on GPIO18). Stacking Pimidi under the panel is experimental:
+#   I2C/baud and pinmux can fight. This profile still bakes dtoverlay=pimidi
+#   (WAVESHARE_KEEP_PIMIDI=1) because that is the product stack you asked for.
+#   If the panel stays black or touch dies, re-flash with
+#   WAVESHARE_KEEP_PIMIDI=0 and use USB MIDI, or use Profile A (HDMI + Pimidi).
+#
+# Wiki: https://www.waveshare.com/wiki/3.5inch_DPI_LCD
+
+ENABLE_WAVESHARE_DPI=1
+ENABLE_HDMI_ULTRAWIDE=0
+ENABLE_HYPERPIXEL4=0
+
+# Keep TRS MIDI DT overlay when the DPI panel is also on the header.
+WAVESHARE_KEEP_PIMIDI=1
+
+# Panel geometry for RK-00pi / ranger apps (portrait 480×640 also possible
+# via video=…,rotate= on the unit — product default is landscape 640×480).
+WAVESHARE_WIDTH=640
+WAVESHARE_HEIGHT=480
+WAVESHARE_REFRESH=60
+
+ENABLE_PIMIDI=1
+PIMIDI_SEL=0
+
+ENABLE_RK00PI=1
+ENABLE_RK00PI_SERVICE=1
+ENABLE_RK00PI_BUTTON=0
+RK00PI_HUB_PRESET=pimidi-2x2
+ENABLE_RK00PI_AUTOHUB=1
+RK00PI_WIDTH=640
+RK00PI_HEIGHT=480
+
+ENABLE_RK00PI_COMPANION=1
+RK00PI_COMPANION_BIND=0.0.0.0
+RK00PI_COMPANION_PORT=8787
+RK00PI_COMPANION_ADVERTISE=1
+
+# No Pisound / Inky / RaspiAudio on this stack
+ENABLE_RASPIAUDIO=0
+ENABLE_INKY=0
+ENABLE_INKY_UI=0
+ENABLE_INKY_STATUS_SERVICE=0

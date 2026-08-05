@@ -76,35 +76,52 @@ else
 	source ${CONFIG_FILE}
 fi
 
-# Profile sanity: a path/name that says hyperpixel must actually enable it.
-# (config.local HDMI leftovers used to leave ENABLE_HYPERPIXEL4=0 while people
-# thought they were building Profile B.)
+# Profile sanity: path/name must match the display toggle it implies.
 _cfg_base="$(basename "${CONFIG_FILE}")"
 if echo "${_cfg_base}" | grep -qi 'hyperpixel'; then
 	if [ "${ENABLE_HYPERPIXEL4:-0}" != "1" ]; then
 		echo "ERROR: config '${CONFIG_FILE}' looks like a HyperPixel profile" 1>&2
 		echo "       but ENABLE_HYPERPIXEL4='${ENABLE_HYPERPIXEL4:-}' (expected 1)." 1>&2
-		echo "       Fix the profile or pass ENABLE_HYPERPIXEL4=1 on the command line." 1>&2
+		exit 1
+	fi
+fi
+if echo "${_cfg_base}" | grep -qi 'waveshare'; then
+	if [ "${ENABLE_WAVESHARE_DPI:-0}" != "1" ]; then
+		echo "ERROR: config '${CONFIG_FILE}' looks like a Waveshare profile" 1>&2
+		echo "       but ENABLE_WAVESHARE_DPI='${ENABLE_WAVESHARE_DPI:-}' (expected 1)." 1>&2
 		exit 1
 	fi
 fi
 
-# HyperPixel owns the DPI panel — never bake forced HDMI bar modes alongside it.
+# DPI panels own the primary display path — never bake forced HDMI bar modes.
 if [ "${ENABLE_HYPERPIXEL4:-0}" = "1" ] && [ "${ENABLE_HDMI_ULTRAWIDE:-0}" = "1" ]; then
 	echo "NOTE: ENABLE_HYPERPIXEL4=1 → forcing ENABLE_HDMI_ULTRAWIDE=0 (DPI owns panel)"
 	ENABLE_HDMI_ULTRAWIDE=0
+fi
+if [ "${ENABLE_WAVESHARE_DPI:-0}" = "1" ]; then
+	if [ "${ENABLE_HDMI_ULTRAWIDE:-0}" = "1" ]; then
+		echo "NOTE: ENABLE_WAVESHARE_DPI=1 → forcing ENABLE_HDMI_ULTRAWIDE=0"
+		ENABLE_HDMI_ULTRAWIDE=0
+	fi
+	if [ "${ENABLE_HYPERPIXEL4:-0}" = "1" ]; then
+		echo "NOTE: ENABLE_WAVESHARE_DPI=1 → forcing ENABLE_HYPERPIXEL4=0"
+		ENABLE_HYPERPIXEL4=0
+	fi
 fi
 
 echo "========================================"
 echo " Patchbox OS image build"
 echo "  config: ${CONFIG_FILE}"
-if [ "${ENABLE_HYPERPIXEL4:-0}" = "1" ]; then
+if [ "${ENABLE_WAVESHARE_DPI:-0}" = "1" ]; then
+	echo "  display: Waveshare 3.5 DPI  ${WAVESHARE_WIDTH:-640}x${WAVESHARE_HEIGHT:-480}"
+	echo "           keep_pimidi=${WAVESHARE_KEEP_PIMIDI:-0}"
+elif [ "${ENABLE_HYPERPIXEL4:-0}" = "1" ]; then
 	echo "  display: HyperPixel 4  ${HYPERPIXEL_WIDTH:-800}x${HYPERPIXEL_HEIGHT:-480}"
 	echo "           rotate=${HYPERPIXEL_ROTATE:-left}  (dtoverlay=vc4-kms-dpi-hyperpixel4)"
 else
 	if [ "${ENABLE_HDMI_ULTRAWIDE:-0}" = "1" ]; then
 		echo "  display: HDMI ultrawide  ${HDMI_WIDTH:-1280}x${HDMI_HEIGHT:-400}"
-		echo "           (no HyperPixel overlay — DPI panel will stay black)"
+		echo "           (no DPI overlay)"
 	else
 		echo "  display: stock / none forced"
 	fi
@@ -275,6 +292,10 @@ time ${DOCKER} run \
   -e "RK00PI_WIDTH=${RK00PI_WIDTH:-}" \
   -e "RK00PI_HEIGHT=${RK00PI_HEIGHT:-}" \
   -e "ENABLE_WAVESHARE_DPI=${ENABLE_WAVESHARE_DPI:-}" \
+  -e "WAVESHARE_WIDTH=${WAVESHARE_WIDTH:-}" \
+  -e "WAVESHARE_HEIGHT=${WAVESHARE_HEIGHT:-}" \
+  -e "WAVESHARE_REFRESH=${WAVESHARE_REFRESH:-}" \
+  -e "WAVESHARE_KEEP_PIMIDI=${WAVESHARE_KEEP_PIMIDI:-}" \
   -e "RASPBIAN_MIRROR=${RASPBIAN_MIRROR:-}" \
   $DOCKER_CMDLINE_POST \
   pi-gen \

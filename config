@@ -15,10 +15,11 @@ PISOUND_GIT_REF="${PISOUND_GIT_REF:-patchbox}"
 HOTSPOT_PASSPHRASE="${HOTSPOT_PASSPHRASE:-blokaslabs}"
 ENABLE_FIRST_LOGIN_PASSWORD_CHANGE="${ENABLE_FIRST_LOGIN_PASSWORD_CHANGE:-1}"
 
-# --- Primary product stack (2026-08-02) ---
+# --- Primary product stack ---
 # Profile A (defaults below): Pi 5 + Pimidi + HDMI 1280×400 + USB touch
-# Profile B: HyperPixel 4.0" 800×480 — see config.hyperpixel4-pimidi.example
-#   or pass ENABLE_HYPERPIXEL4=1 ENABLE_HDMI_ULTRAWIDE=0 on the build command.
+# Profile B: HyperPixel 4.0" 800×480 — config.hyperpixel4-pimidi.example
+# Profile C: Waveshare 3.5" DPI 640×480 + Pimidi — config.waveshare35-pimidi.example
+#   ./build-docker.sh -c config.waveshare35-pimidi
 
 # HDMI ultrawide touch monitor (custom CVT mode)
 ENABLE_HDMI_ULTRAWIDE="${ENABLE_HDMI_ULTRAWIDE:-1}"
@@ -67,7 +68,7 @@ ENABLE_RK00PI_COMPANION="${ENABLE_RK00PI_COMPANION:-1}"
 RK00PI_COMPANION_BIND="${RK00PI_COMPANION_BIND:-0.0.0.0}"
 RK00PI_COMPANION_PORT="${RK00PI_COMPANION_PORT:-8787}"
 RK00PI_COMPANION_ADVERTISE="${RK00PI_COMPANION_ADVERTISE:-1}"
-# Empty → HyperPixel dims when ENABLE_HYPERPIXEL4=1, else HDMI dims
+# Empty → HyperPixel / Waveshare / HDMI dims (same order as stage 10)
 RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
 
@@ -82,7 +83,7 @@ RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
 #   ENABLE_CHORDRANGER_SERVICE=1   (the stage disables rk00pi.service for you)
 ENABLE_CHORDRANGER="${ENABLE_CHORDRANGER:-1}"
 ENABLE_CHORDRANGER_SERVICE="${ENABLE_CHORDRANGER_SERVICE:-0}"
-# Empty → HyperPixel dims when ENABLE_HYPERPIXEL4=1, else HDMI dims
+# Empty → HyperPixel / Waveshare / HDMI dims (same order as stage 10)
 CHORDRANGER_WIDTH="${CHORDRANGER_WIDTH:-}"
 CHORDRANGER_HEIGHT="${CHORDRANGER_HEIGHT:-}"
 
@@ -104,8 +105,8 @@ ENABLE_SCENERANGER="${ENABLE_SCENERANGER:-1}"
 ENABLE_GROOVERANGER="${ENABLE_GROOVERANGER:-1}"
 ENABLE_SYNTHRANGER="${ENABLE_SYNTHRANGER:-1}"
 
-# Per-app panel override; empty → HyperPixel dims when ENABLE_HYPERPIXEL4=1,
-# else HDMI dims (same resolution order as RK-00pi and ChordRanger).
+# Per-app panel override; empty → HyperPixel / Waveshare / HDMI
+# (same resolution order as RK-00pi and ChordRanger).
 MIDIRANGER_WIDTH="${MIDIRANGER_WIDTH:-}"
 MIDIRANGER_HEIGHT="${MIDIRANGER_HEIGHT:-}"
 GENRANGER_WIDTH="${GENRANGER_WIDTH:-}"
@@ -119,8 +120,14 @@ GROOVERANGER_HEIGHT="${GROOVERANGER_HEIGHT:-}"
 SYNTHRANGER_WIDTH="${SYNTHRANGER_WIDTH:-}"
 SYNTHRANGER_HEIGHT="${SYNTHRANGER_HEIGHT:-}"
 
-# Off: Waveshare GPIO DPI (legacy)
+# Off: Waveshare 3.5" DPI 640×480 capacitive (Profile C — use config.waveshare35-pimidi)
 ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"
+WAVESHARE_WIDTH="${WAVESHARE_WIDTH:-640}"
+WAVESHARE_HEIGHT="${WAVESHARE_HEIGHT:-480}"
+WAVESHARE_REFRESH="${WAVESHARE_REFRESH:-60}"
+# 1 = keep dtoverlay=pimidi with the DPI panel (experimental stack).
+# 0 = packages only / strip pimidi DT (safer if panel or touch blacks out).
+WAVESHARE_KEEP_PIMIDI="${WAVESHARE_KEEP_PIMIDI:-0}"
 
 # Off: e-paper
 ENABLE_INKY="${ENABLE_INKY:-0}"

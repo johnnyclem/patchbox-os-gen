@@ -1,12 +1,13 @@
 # Handoff — Patchbox OS gen (Pi 5 + Pimidi + ElecLab HDMI + RK-00pi)
 
-**Date:** 2026-08-04  
+**Date:** 2026-08-05  
 **Branch:** `patchbox-2024-01`  
 **Repo:** `/Users/johnnyclem/Desktop/Repos/patchbox-os-gen`
 
-**Focus (2026-08-04):** Profile A only — ElecLab 1280×400 + multi/hot-swap MIDI
-hub + companion routing UI. HyperPixel 4 glass is cracked/parked; do not spend
-bring-up time on Profile B unless someone rebuilds that hardware path.
+**Focus (2026-08-05):** Profile A remains the soak product (ElecLab HDMI +
+multi/hot-swap MIDI). **Profile C** (Waveshare 3.5″ DPI 640×480 + Pimidi under
+the panel) is wired in the tree — bake with `config.waveshare35-pimidi`.
+HyperPixel Profile B stays parked (glass cracked).
 
 **On-device soak:** [`SOAK-PROFILE-A.md`](SOAK-PROFILE-A.md) · on image as
 `~/SOAK-PROFILE-A.md` and `sudo patchbox-soak`.
@@ -27,6 +28,36 @@ Raspberry Pi 5
         · companion :8787 routing matrix (token auth, LAN)
         · soft tape
 ```
+
+### Profile C — Waveshare 3.5″ DPI + Pimidi (`config.waveshare35-pimidi`) — **experimental**
+
+**Build command:**
+
+```bash
+./build-docker.sh -c config.waveshare35-pimidi
+# bare path also works:  ./build-docker.sh config.waveshare35-pimidi
+```
+
+```text
+Raspberry Pi
+  └── Blokas Pimidi (sel=0) — 2×2 TRS MIDI
+        └── Waveshare 3.5inch DPI LCD (640×480 IPS, Goodix touch)
+              · dtoverlay=waveshare-35dpi + waveshare-touch-35dpi
+              · WAVESHARE_KEEP_PIMIDI=1 (experimental — pinmux fight possible)
+              · RK-00pi / ranger apps at 640×480
+```
+
+**GPIO risk:** Waveshare DPI666 uses almost the entire 40-pin (touch I2C +
+backlight PWM on GPIO18). Stacking Pimidi under the panel is **experimental**.
+If the glass stays black or touch dies after flash:
+
+1. SSH: `sudo patchbox-fix-waveshare-dpi && sudo reboot`
+2. Comment out `dtoverlay=pimidi` in `/boot/firmware/config.txt`, reboot, use USB MIDI
+3. Or re-bake with `WAVESHARE_KEEP_PIMIDI=0` / Profile A for conflict-free TRS
+
+On-device notes: `~/WAVESHARE-DPI.txt`, `patchbox-display-status`.
+
+Wiki: https://www.waveshare.com/wiki/3.5inch_DPI_LCD
 
 ### Profile B — HyperPixel 4.0" DPI (`config.hyperpixel4-pimidi` / `.example`) — **parked**
 
@@ -111,8 +142,9 @@ Baked into the image by `stage3/10-install-rk00pi` as `/opt/rk00pi`.
 | `RK00PI_WIDTH` / `HEIGHT` | (HDMI dims) | `/etc/rk00pi/config.toml` panel size |
 | `ENABLE_HDMI_ULTRAWIDE` | **1** | Custom HDMI mode **1280×400@60** |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | Override if panel differs |
-| `ENABLE_HYPERPIXEL4` | **0** | Parked — DPI profile |
-| `ENABLE_WAVESHARE_DPI` | **0** | 3.5″ GPIO DPI (parked) |
+| `ENABLE_HYPERPIXEL4` | **0** | Parked — HyperPixel DPI profile |
+| `ENABLE_WAVESHARE_DPI` | **0** | Profile C — use `config.waveshare35-pimidi` |
+| `WAVESHARE_WIDTH` / `HEIGHT` / `KEEP_PIMIDI` | 640 / 480 / 0 | Panel geometry + experimental Pimidi stack |
 | `ENABLE_INKY` / `ENABLE_INKY_UI` | **0** | E-paper (parked) |
 | `ENABLE_RASPIAUDIO` | **0** | I2S HAT (parked) |
 | `PISOUND_GIT_REF` | `patchbox` | Pisound tree checkout |
@@ -133,8 +165,10 @@ kmsdrm fails with `pygame.error: kmsdrm not available`.
 | `03-install-jack` | on | JACK2 + realtime limits |
 | `06-install-inky` | off | E-paper UI (legacy) |
 | `07-install-raspiaudio` | off | I2S audio HAT (legacy) |
-| `08-install-waveshare-dpi` | off | GPIO DPI 640×480 (legacy) |
+| `08-install-waveshare-dpi` | off | Profile C: Waveshare 3.5 DPI 640×480 |
 | `09-hdmi-ultrawide` | **on** | HDMI CVT + cmdline + touch + docs |
+| `11-install-pimidi` | **on** | Pimidi packages + DT (skipped DT when DPI KEEP=0) |
+| `12-install-hyperpixel4` | off | Profile B: HyperPixel 4 (parked) |
 | `10-install-rk00pi` | **on** | **Main app** + The Button bridge from `RK-00pi` |
 | `13-install-chordranger` | **on** (unit off) | **ChordRanger** from `apps/chordranger` — installed, not enabled |
 
@@ -262,7 +296,7 @@ Same socket shape as RK-00pi's on purpose, and the same ≥7 s fall-through to
 |----------|---------|---------|
 | `ENABLE_CHORDRANGER` | **1** | install to `/opt/chordranger` |
 | `ENABLE_CHORDRANGER_SERVICE` | **0** | boot ChordRanger instead of RK-00pi |
-| `CHORDRANGER_WIDTH` / `HEIGHT` | (panel dims) | HyperPixel dims when `ENABLE_HYPERPIXEL4=1`, else HDMI |
+| `CHORDRANGER_WIDTH` / `HEIGHT` | (panel dims) | HyperPixel → Waveshare → HDMI (same as RK-00pi) |
 | `CHORDRANGER_USER` | `chordranger` | service user |
 
 ### Tests
@@ -271,12 +305,13 @@ Same socket shape as RK-00pi's on purpose, and the same ≥7 s fall-through to
 dummy driver, a capture MIDI backend, a fake clock). `python
 bench/render_panel.py docs/img` regenerates the screenshots in the docs.
 
-Panel geometry follows the same resolution order as `10-install-rk00pi`, so
-both hardware profiles work: the 1280×400 bar gets side rails, the 800×480
-HyperPixel and the 480×800 4" get a stacked top band and bottom tabs. The
-Pisound button bridge is installed either way but only does anything on a rig
-that has the board — with Pisound parked in Profile A, every gesture has an
-on-screen equivalent and nothing is lost.
+Panel geometry follows the same resolution order as `10-install-rk00pi`
+(HyperPixel → Waveshare 640×480 → HDMI 1280×400), so every hardware profile
+gets matching chrome: the bar gets side rails; 800×480 / 640×480 DPI panels
+get a stacked top band and bottom tabs. The Pisound button bridge is installed
+either way but only does anything on a rig that has the board — with Pisound
+parked in Profile A, every gesture has an on-screen equivalent and nothing is
+lost.
 
 Not yet verified on hardware: touch on the real ElecLab panel, MIDI DIN
 output, and the button under a live `pisound-btn`. Same on-device checklist as
@@ -496,9 +531,12 @@ from **Files**. Tracks: drums/bass/chords/lead/perc/pads (GM ch layout).
    `sudo patchbox-soak --touch-live`, Launch-grid taps  
 2. **P0 — Multi USB MIDI hot-swap**: autohub / I/O AUTO FIT, dual devices,  
    unplug/replug without restart  
-3. **P1 — Companion matrix** from phone: token, live route edit mid-play  
-4. Gate driver still `null` until buffered stage is signed off  
-5. HyperPixel Profile B — parked (glass dead)
+3. **P1 — Profile C bake + field**:  
+   `./build-docker.sh -c config.waveshare35-pimidi`  
+   then stack Pi → Pimidi → Waveshare 3.5; if black panel, try KEEP_PIMIDI=0  
+4. **P1 — Companion matrix** from phone: token, live route edit mid-play  
+5. Gate driver still `null` until buffered stage is signed off  
+6. HyperPixel Profile B — parked (glass dead)
 
 ---
 
@@ -506,15 +544,19 @@ from **Files**. Tracks: drums/bass/chords/lead/perc/pads (GM ch layout).
 
 ```text
 config
+config.waveshare35-pimidi         # Profile C bake preset
+config.waveshare35-pimidi.example
 .gitmodules
 SOAK-PROFILE-A.md                 # on-device soak (Profile A)
 RK-00pi/                          # submodule (main app) @ c9dfa21+
 apps/chordranger/                 # second app (in-repo, not a submodule)
 stage3/02-install-pisound/
+stage3/08-install-waveshare-dpi/  # Profile C panel
 stage3/09-hdmi-ultrawide/         # ElecLab HDMI + touch helpers + patchbox-soak
 stage3/10-install-rk00pi/         # bake app + companion + autohub
 stage3/10-install-rk00pi/files/patchbox-rk00pi-autohub
 stage3/10-install-rk00pi/tests/
+stage3/11-install-pimidi/         # TRS MIDI + KEEP flags for DPI
 stage3/13-install-chordranger/
 HANDOFF.md
 deploy/image_*.zip                # after successful build

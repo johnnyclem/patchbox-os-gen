@@ -22,13 +22,16 @@ if [ ! -f "${RK_SRC}/main.py" ] || [ ! -f "${RK_SRC}/deploy/rk00pi.service" ]; t
 	exit 1
 fi
 
-# Panel size priority: explicit RK00PI_* → HyperPixel → HDMI ultrawide defaults
+# Panel size priority: explicit RK00PI_* → HyperPixel → Waveshare → HDMI
 if [ -n "${RK00PI_WIDTH}" ] && [ -n "${RK00PI_HEIGHT}" ]; then
 	W="${RK00PI_WIDTH}"
 	H="${RK00PI_HEIGHT}"
 elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
 	W="${HYPERPIXEL_WIDTH:-800}"
 	H="${HYPERPIXEL_HEIGHT:-480}"
+elif [ "${ENABLE_WAVESHARE_DPI}" = "1" ]; then
+	W="${WAVESHARE_WIDTH:-640}"
+	H="${WAVESHARE_HEIGHT:-480}"
 else
 	W="${HDMI_WIDTH:-1280}"
 	H="${HDMI_HEIGHT:-400}"

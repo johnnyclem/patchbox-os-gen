@@ -267,6 +267,10 @@ export RK00PI_HUB_PRESET="${RK00PI_HUB_PRESET:-}"
 export RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 export RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
 export ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"
+export WAVESHARE_WIDTH="${WAVESHARE_WIDTH:-640}"
+export WAVESHARE_HEIGHT="${WAVESHARE_HEIGHT:-480}"
+export WAVESHARE_REFRESH="${WAVESHARE_REFRESH:-60}"
+export WAVESHARE_KEEP_PIMIDI="${WAVESHARE_KEEP_PIMIDI:-0}"
 export ENABLE_INKY="${ENABLE_INKY:-0}"
 export ENABLE_INKY_UI="${ENABLE_INKY_UI:-0}"
 export ENABLE_INKY_STATUS_SERVICE="${ENABLE_INKY_STATUS_SERVICE:-0}"
@@ -274,27 +278,41 @@ export ENABLE_RASPIAUDIO="${ENABLE_RASPIAUDIO:-0}"
 export RASPIAUDIO_OVERLAY="${RASPIAUDIO_OVERLAY:-wm8960-soundcard}"
 export RASPBIAN_MIRROR="${RASPBIAN_MIRROR:-http://mirrors.ocf.berkeley.edu/raspbian/raspbian}"
 
-# HyperPixel owns the DPI panel. Forced HDMI bar modes fight pinmux / kiosk
-# geometry and are a common reason a "HyperPixel build" boots with a black
-# glass (only the backlight flashes). Mutual exclusion is enforced here so
-# config.local HDMI leftovers cannot re-enable Profile A mid-build.
+# DPI panels own the header / primary connector. Forced HDMI bar modes fight
+# pinmux and kiosk geometry. Mutual exclusion so config.local leftovers cannot
+# re-enable Profile A mid-build.
 if [ "${ENABLE_HYPERPIXEL4}" = "1" ] && [ "${ENABLE_HDMI_ULTRAWIDE}" = "1" ]; then
 	echo "NOTE: ENABLE_HYPERPIXEL4=1 → forcing ENABLE_HDMI_ULTRAWIDE=0 (DPI owns panel)"
 	ENABLE_HDMI_ULTRAWIDE=0
 	export ENABLE_HDMI_ULTRAWIDE
 fi
+if [ "${ENABLE_WAVESHARE_DPI}" = "1" ]; then
+	if [ "${ENABLE_HDMI_ULTRAWIDE}" = "1" ]; then
+		echo "NOTE: ENABLE_WAVESHARE_DPI=1 → forcing ENABLE_HDMI_ULTRAWIDE=0"
+		ENABLE_HDMI_ULTRAWIDE=0
+		export ENABLE_HDMI_ULTRAWIDE
+	fi
+	if [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
+		echo "NOTE: ENABLE_WAVESHARE_DPI=1 → forcing ENABLE_HYPERPIXEL4=0 (one DPI panel)"
+		ENABLE_HYPERPIXEL4=0
+		export ENABLE_HYPERPIXEL4
+	fi
+fi
 
 echo "========================================"
 echo " Patchbox display profile (build.sh)"
-if [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
+if [ "${ENABLE_WAVESHARE_DPI}" = "1" ]; then
+	echo "  Waveshare 3.5 DPI  ${WAVESHARE_WIDTH}x${WAVESHARE_HEIGHT}"
+	echo "  keep_pimidi=${WAVESHARE_KEEP_PIMIDI}  (dtoverlay=waveshare-35dpi)"
+elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
 	echo "  HyperPixel 4  ${HYPERPIXEL_WIDTH}x${HYPERPIXEL_HEIGHT}  rotate=${HYPERPIXEL_ROTATE}"
 	echo "  stage 12 will write dtoverlay=vc4-kms-dpi-hyperpixel4"
 else
 	if [ "${ENABLE_HDMI_ULTRAWIDE}" = "1" ]; then
 		echo "  HDMI ultrawide  ${HDMI_WIDTH}x${HDMI_HEIGHT}"
-		echo "  ENABLE_HYPERPIXEL4=0 — stage 12 SKIPPED (no DPI overlay)"
+		echo "  ENABLE_HYPERPIXEL4=0 / WAVESHARE=0 — no DPI overlay"
 	else
-		echo "  stock display path (no HyperPixel, no forced HDMI bar)"
+		echo "  stock display path (no HyperPixel, no Waveshare, no forced HDMI bar)"
 	fi
 fi
 echo "  RK00PI panel: ${RK00PI_WIDTH:-auto}x${RK00PI_HEIGHT:-auto}"

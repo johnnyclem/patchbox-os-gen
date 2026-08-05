@@ -19,12 +19,21 @@ fi
 
 echo "Pimidi: sel=${SEL} → ${CONFIG_TXT}"
 
-# HyperPixel (and other full-DPI panels) own the 40-pin. Writing pimidi +
-# i2c_arm here would black the panel. Stage 12 also strips these; skip early
-# when the HyperPixel profile is active unless explicitly overridden.
+# Full-DPI panels own the 40-pin. Writing pimidi + i2c_arm can black the glass
+# or kill touch. Skip the DT overlay unless the profile opts in with KEEP.
+SKIP_PIMIDI_DT=0
 if [ "${ENABLE_HYPERPIXEL4}" = "1" ] && [ "${HYPERPIXEL_KEEP_PIMIDI:-0}" != "1" ]; then
+	SKIP_PIMIDI_DT=1
 	echo "  ENABLE_HYPERPIXEL4=1 — installing packages only (no pimidi DT overlay)."
 	echo "  TRS MIDI needs Profile A (HDMI) or USB MIDI on the HyperPixel stack."
+fi
+if [ "${ENABLE_WAVESHARE_DPI}" = "1" ] && [ "${WAVESHARE_KEEP_PIMIDI:-0}" != "1" ]; then
+	SKIP_PIMIDI_DT=1
+	echo "  ENABLE_WAVESHARE_DPI=1 — installing packages only (no pimidi DT overlay)."
+	echo "  Stack with WAVESHARE_KEEP_PIMIDI=1 is experimental; else use USB MIDI."
+fi
+if [ "${SKIP_PIMIDI_DT}" = "1" ]; then
+	:
 else
 	# Strip prior managed Pimidi / i2c baudrate lines we own
 	TMP="$(mktemp)"
@@ -66,7 +75,20 @@ install -d "${ROOTFS_DIR}/usr/local/bin"
 install -m 755 files/patchbox-pimidi-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-pimidi-status"
 
-# Appliance notes
+# Appliance notes (panel line follows active display profile)
+if [ "${ENABLE_WAVESHARE_DPI}" = "1" ]; then
+	_PANEL_NOTE="Waveshare 3.5 DPI ${WAVESHARE_WIDTH:-640}×${WAVESHARE_HEIGHT:-480} (keep_pimidi=${WAVESHARE_KEEP_PIMIDI:-0})"
+elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
+	_PANEL_NOTE="HyperPixel 4 ${HYPERPIXEL_WIDTH:-800}×${HYPERPIXEL_HEIGHT:-480} (keep_pimidi=${HYPERPIXEL_KEEP_PIMIDI:-0})"
+else
+	_PANEL_NOTE="HDMI ${HDMI_WIDTH:-1280}×${HDMI_HEIGHT:-400} + USB touch (ElecLab)"
+fi
+if [ "${SKIP_PIMIDI_DT}" = "1" ]; then
+	_DT_NOTE="packages only — dtoverlay=pimidi NOT written (DPI owns header)"
+else
+	_DT_NOTE="dtoverlay=pimidi,sel=${SEL} + i2c_arm_baudrate=1000000"
+fi
+
 install -d "${ROOTFS_DIR}/home/${FIRST_USER_NAME}"
 cat > "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/PIMIDI.txt" <<EOF
 Patchbox OS — Pimidi 2×2 + RK-00pi
@@ -76,12 +98,11 @@ Hardware
   Raspberry Pi 5
   + Blokas Pimidi (40-pin), sel=${SEL}
       TRS MIDI: A in/out, B in/out (Type A)
-  + HDMI 1280×400 + USB touch (ElecLab)
+  + ${_PANEL_NOTE}
   + RK-00pi kiosk (no Pisound — no The Button / no tape PCM)
 
 Software
-  dtoverlay=pimidi,sel=${SEL}
-  dtparam=i2c_arm=on,i2c_arm_baudrate=1000000
+  ${_DT_NOTE}
   package: pimidi (snd_pimidi)
 
 ALSA names (sel=0)
@@ -104,6 +125,12 @@ Checks
 Stack / sel
   One board: sel=0 (default). Additional boards need unique sel=1..3
   and another dtoverlay=pimidi,sel=N line (re-run install or edit config.txt).
+
+DPI + Pimidi
+  Full-GPIO panels (HyperPixel / Waveshare) can fight pimidi pinmux.
+  Profile C (Waveshare) sets WAVESHARE_KEEP_PIMIDI=1 experimentally.
+  If the glass stays black or touch dies, rebuild with KEEP=0 and use USB MIDI,
+  or use Profile A (HDMI + Pimidi) for a conflict-free TRS stack.
 EOF
 chown 1000:1000 "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/PIMIDI.txt" 2>/dev/null || true
 

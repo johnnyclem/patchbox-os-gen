@@ -28,13 +28,16 @@ fi
 
 # Panel geometry, resolved the same way stage3/10-install-rk00pi does it so the
 # two apps never disagree about what they are drawing on: an explicit override
-# wins, then the HyperPixel profile, then the HDMI bar.
+# wins, then HyperPixel, then Waveshare DPI, then the HDMI bar.
 if [ -n "${CHORDRANGER_WIDTH}" ] && [ -n "${CHORDRANGER_HEIGHT}" ]; then
 	W="${CHORDRANGER_WIDTH}"
 	H="${CHORDRANGER_HEIGHT}"
 elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
 	W="${HYPERPIXEL_WIDTH:-800}"
 	H="${HYPERPIXEL_HEIGHT:-480}"
+elif [ "${ENABLE_WAVESHARE_DPI}" = "1" ]; then
+	W="${WAVESHARE_WIDTH:-640}"
+	H="${WAVESHARE_HEIGHT:-480}"
 else
 	W="${HDMI_WIDTH:-1280}"
 	H="${HDMI_HEIGHT:-400}"

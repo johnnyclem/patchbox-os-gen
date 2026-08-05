@@ -9,6 +9,11 @@ if [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
 	exit 0
 fi
 
+if [ "${ENABLE_WAVESHARE_DPI}" = "1" ]; then
+	echo "ENABLE_WAVESHARE_DPI=1 — skipping ultrawide HDMI setup (DPI owns panel)"
+	exit 0
+fi
+
 if [ "${ENABLE_HDMI_ULTRAWIDE}" != "1" ]; then
 	echo "ENABLE_HDMI_ULTRAWIDE!=1 — skipping ultrawide HDMI setup"
 	exit 0

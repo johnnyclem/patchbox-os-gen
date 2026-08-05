@@ -273,12 +273,15 @@ The following environment variables are supported:
    `FIRST_USER_PASS` is a well-known default. Set to `0` to restore the
    previous unforced behavior.
 
- * `ENABLE_WAVESHARE_DPI` (Default: `1`)
+ * `ENABLE_WAVESHARE_DPI` (Default: `0`)
 
-   Configure **Waveshare 3.5″ DPI LCD** (640×480 IPS capacitive, 40-pin).
-   Installs vendor DTBO overlays, `dtoverlay=waveshare-35dpi` +
+   Configure **Waveshare 3.5″ DPI LCD** (640×480 IPS capacitive, 40-pin) —
+   Profile C. Installs vendor DTBO overlays, `dtoverlay=waveshare-35dpi` +
    `waveshare-touch-35dpi`, libinput touch rules, and LightDM no-blank.
-   **Conflicts with Inky / RaspiAudio / most HATs** on the same header.
+   Use `config.waveshare35-pimidi` for the full bake (panel + Pimidi).
+   **`WAVESHARE_KEEP_PIMIDI=1`** keeps `dtoverlay=pimidi` under the panel
+   (experimental — pinmux can fight). **Conflicts with Inky / RaspiAudio /
+   HyperPixel** on the same header.
 
  * `ENABLE_INKY` (Default: `0`)
 
@@ -473,8 +476,28 @@ Field fix for an already-flashed HDMI image on a HyperPixel unit:
 # or on the Pi:  sudo patchbox-fix-hyperpixel4 && sudo reboot
 ```
 
-Parked options (still in tree, off by default): Waveshare GPIO DPI, Inky
-e-paper, RaspiAudio I2S — each conflicts with Pisound and/or the chosen UI.
+### Alternate stack: Waveshare 3.5″ DPI + Pimidi (Profile C)
+
+```text
+Pi + Blokas Pimidi (40-pin) — 2×2 TRS MIDI
+    └── Waveshare 3.5inch DPI LCD (640×480 IPS, Goodix touch)
+    + RK-00pi kiosk at 640×480
+```
+
+**Build command:**
+
+```bash
+./build-docker.sh -c config.waveshare35-pimidi
+```
+
+Stacking Pimidi under a full-GPIO DPI panel is **experimental**
+(`WAVESHARE_KEEP_PIMIDI=1`). If the panel stays black or touch dies, rebuild
+with `WAVESHARE_KEEP_PIMIDI=0` and use USB MIDI, or stay on Profile A for
+conflict-free TRS. On-device: `~/WAVESHARE-DPI.txt`,
+`sudo patchbox-fix-waveshare-dpi`.
+
+Parked / opt-in: Inky e-paper, RaspiAudio I2S — each conflicts with Pisound
+and/or the chosen UI.
 
 ### Second app: ChordRanger
 
@@ -536,7 +559,8 @@ on the unit with `patchbox-rk00pi-autohub` (read-only) and repair with
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | HDMI panel geometry |
 | `ENABLE_HYPERPIXEL4` | `0` | Pimoroni HyperPixel 4 DPI (Profile B — parked) |
 | `HYPERPIXEL_WIDTH` / `HEIGHT` / `ROTATE` | 800 / 480 / left | DPI geometry + landscape rotation |
-| `ENABLE_WAVESHARE_DPI` | `0` | GPIO DPI (conflicts with Pisound) |
+| `ENABLE_WAVESHARE_DPI` | `0` | Waveshare 3.5 DPI (Profile C — `config.waveshare35-pimidi`) |
+| `WAVESHARE_WIDTH` / `HEIGHT` / `KEEP_PIMIDI` | 640 / 480 / 0 | Panel geometry + experimental Pimidi under DPI |
 | `ENABLE_INKY` | `0` | E-paper software |
 | `ENABLE_RASPIAUDIO` | `0` | I2S audio HAT |
 

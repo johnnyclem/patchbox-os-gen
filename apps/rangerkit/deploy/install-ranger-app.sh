@@ -32,6 +32,9 @@ resolve_panel_geometry() { # $1 explicit width, $2 explicit height
 	elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
 		RANGER_W="${HYPERPIXEL_WIDTH:-800}"
 		RANGER_H="${HYPERPIXEL_HEIGHT:-480}"
+	elif [ "${ENABLE_WAVESHARE_DPI}" = "1" ]; then
+		RANGER_W="${WAVESHARE_WIDTH:-640}"
+		RANGER_H="${WAVESHARE_HEIGHT:-480}"
 	else
 		RANGER_W="${HDMI_WIDTH:-1280}"
 		RANGER_H="${HDMI_HEIGHT:-400}"

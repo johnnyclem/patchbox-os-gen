@@ -14,8 +14,14 @@ if [ "${ENABLE_WAVESHARE_DPI}" != "1" ]; then
 	exit 0
 fi
 
+W="${WAVESHARE_WIDTH:-640}"
+H="${WAVESHARE_HEIGHT:-480}"
+R="${WAVESHARE_REFRESH:-60}"
+KEEP_PIMIDI="${WAVESHARE_KEEP_PIMIDI:-0}"
+
 CONFIG_TXT="${ROOTFS_DIR}/boot/firmware/config.txt"
 OVERLAY_DIR="${ROOTFS_DIR}/boot/firmware/overlays"
+echo "Waveshare 3.5 DPI: ${W}x${H}@${R} keep_pimidi=${KEEP_PIMIDI}"
 
 install -d "${OVERLAY_DIR}"
 install -m 644 files/overlays/*.dtbo "${OVERLAY_DIR}/"
@@ -38,21 +44,34 @@ while IFS= read -r line || [ -n "${line}" ]; do
 			continue ;;
 		dtoverlay=vc4-kms-DPI-35inch*|dtoverlay=waveshare-35dpi-3b*|dtoverlay=waveshare-35dpi-4b*)
 			continue ;;
+		# Other DPI / HyperPixel — only one panel owns the header
+		dtoverlay=vc4-kms-dpi-hyperpixel4*|dtoverlay=vc4-kms-dpi-hyperpixel4sq*|dtoverlay=vc4-kms-dpi-generic*)
+			continue ;;
+		*'--- HyperPixel 4'*|*'--- end HyperPixel 4'*|*'--- HDMI ultrawide'*|*'--- end HDMI ultrawide'*)
+			continue ;;
+		hdmi_group=*|hdmi_mode=*|hdmi_cvt=*|hdmi_drive=*|hdmi_force_hotplug=*|hdmi_ignore_edid=*)
+			continue ;;
 		dtparam=spi=on)
 			echo "#dtparam=spi=on"
 			continue ;;
 		dtparam=i2s=on)
 			echo "#dtparam=i2s=on"
 			continue ;;
-		hdmi_group=*)
-			echo "#${s}"
-			continue ;;
-		hdmi_mode=*)
-			echo "#${s}"
-			continue ;;
-		hdmi_force_hotplug=*)
-			echo "#${s}"
-			continue ;;
+		# Strip pimidi DT unless this profile opts in (stage 11 re-adds when KEEP=1)
+		dtoverlay=pimidi*|dtparam=i2c_arm=*|dtparam=i2c_arm_baudrate=*)
+			if [ "${KEEP_PIMIDI}" = "1" ]; then
+				:
+			else
+				continue
+			fi
+			;;
+		*'--- Pimidi'*|*'--- end Pimidi'*)
+			if [ "${KEEP_PIMIDI}" = "1" ]; then
+				:
+			else
+				continue
+			fi
+			;;
 		*'--- Waveshare 3.5 DPI'*|*'--- end Waveshare'*)
 			continue ;;
 	esac
@@ -72,13 +91,14 @@ if ! grep -qE '^max_framebuffers=' "${TMP_CFG}"; then
 fi
 
 if ! grep -qE '^dtoverlay=waveshare-35dpi$' "${TMP_CFG}"; then
-	cat >> "${TMP_CFG}" <<'EOF'
+	cat >> "${TMP_CFG}" <<EOF
 
-# --- Waveshare 3.5 DPI LCD (640x480 IPS capacitive) ---
+# --- Waveshare 3.5 DPI LCD (${W}x${H} IPS capacitive) ---
 # Bookworm: https://www.waveshare.com/wiki/3.5inch_DPI_LCD
 # DTBO files installed to /boot/firmware/overlays/
 # GPIO: almost all pins used for DPI666 + touch I2C + backlight PWM (GPIO18).
-# Free NC: physical pins 1, 17, 35, 37 only — no I2S audio HAT stacking.
+# Free NC: physical pins 1, 17, 35, 37 only — I2S audio HAT will not work.
+# Pimidi under this panel: WAVESHARE_KEEP_PIMIDI=${KEEP_PIMIDI} (experimental).
 dtoverlay=waveshare-35dpi
 dtoverlay=waveshare-touch-35dpi
 # Fallback if still black (uncomment ONE line, reboot):
@@ -98,7 +118,7 @@ if [ -f "${CMDLINE}" ]; then
 	# Strip prior DPI video= tokens
 	sed -E 's/ *video=DPI-1:[^ ]*//g' "${CMDLINE}" > "${TMP_C}.1"
 	if ! grep -q 'video=DPI-1:' "${TMP_C}.1"; then
-		sed 's/^/video=DPI-1:640x480M@60 /' "${TMP_C}.1" > "${TMP_C}.2"
+		sed "s/^/video=DPI-1:${W}x${H}M@${R} /" "${TMP_C}.1" > "${TMP_C}.2"
 	else
 		cp "${TMP_C}.1" "${TMP_C}.2"
 	fi
@@ -169,44 +189,53 @@ EOF
 
 install -d "${ROOTFS_DIR}/home/${FIRST_USER_NAME}"
 cat > "${ROOTFS_DIR}/home/${FIRST_USER_NAME}/WAVESHARE-DPI.txt" <<EOF
-Patchbox OS — Waveshare 3.5" DPI LCD (640×480 capacitive)
+Patchbox OS — Waveshare 3.5" DPI LCD (${W}×${H} capacitive)
 =========================================================
 
-Hardware
-  Waveshare 3.5inch DPI LCD on the 40-pin header (on top of the Pi).
-  Panel: 640×480 IPS @ 60Hz via DPI666
-  Touch: Goodix capacitive (I2C), 5-point, glass cover
+Hardware stack
+  Raspberry Pi
+    └── Blokas Pimidi (optional, keep_pimidi=${KEEP_PIMIDI})
+          └── Waveshare 3.5inch DPI LCD
+  Panel: ${W}×${H} IPS @ ${R}Hz via DPI666
+  Touch: Goodix capacitive (I2C), glass cover
   Wiki:  https://www.waveshare.com/wiki/3.5inch_DPI_LCD
 
 Boot config (Bookworm)
   dtoverlay=vc4-kms-v3d
   dtoverlay=waveshare-35dpi
   dtoverlay=waveshare-touch-35dpi
-  cmdline: video=DPI-1:640x480M@60
+  cmdline: video=DPI-1:${W}x${H}M@${R}
   Overlays: /boot/firmware/overlays/waveshare-*.dtbo
   Backlight: waveshare-dpi-backlight.service (GPIO18 high)
+  Pimidi: keep_pimidi=${KEEP_PIMIDI}  (dtoverlay=pimidi when 1)
 
-GPIO — exclusive header
-  Free NC only: physical pins 1, 17, 35, 37.
-  Do NOT stack Inky, RaspiAudio, Pisound, or Pimidi on this header.
+GPIO
+  DPI uses almost the entire header. Free NC: pins 1, 17, 35, 37.
+  Stacking Pimidi under the panel is experimental — if the glass stays black
+  or touch dies, set WAVESHARE_KEEP_PIMIDI=0 and use USB MIDI, or Profile A
+  (HDMI + Pimidi).
 
-Audio: USB interface for JACK (I2S HAT will not work under DPI).
+Audio: USB interface if no other HAT; I2S will not work under DPI.
 
 Black screen recovery
-  1. Power off, reseat HAT on all 40 pins (not offset).
-  2. SSH in and run:
+  1. Power off, reseat all 40 pins (not offset).
+  2. SSH:
        sudo patchbox-fix-waveshare-dpi
        sudo reboot
   3. If still black:
-       sudo pinctrl set 18 op dh          # force backlight
+       sudo pinctrl set 18 op dh
        sudo patchbox-display-status
-       dmesg | grep -iE 'dpi|panel|goodix'
-  4. Fallback: edit /boot/firmware/config.txt, uncomment:
+       dmesg | grep -iE 'dpi|panel|goodix|pimidi'
+  4. Fallback: uncomment in /boot/firmware/config.txt:
        #dtoverlay=vc4-kms-DPI-35inch
-     then reboot.
+  5. Pimidi fight: comment out dtoverlay=pimidi, reboot; use USB MIDI.
 
 Rotation (optional)
-  video=DPI-1:640x480M@60,rotate=90   # in cmdline.txt
+  video=DPI-1:${W}x${H}M@${R},rotate=90   # in cmdline.txt
+
+RK-00pi panel size
+  /etc/rk00pi/config.toml  width=${W} height=${H}
+  Checks:  patchbox-display-status · patchbox-rk00pi-status
 EOF
 
 chown 1000:1000 \
@@ -217,4 +246,4 @@ on_chroot << 'EOF' || true
 	apt-get install -y squeekboard 2>/dev/null || apt-get install -y matchbox-keyboard 2>/dev/null || true
 EOF
 
-echo "Waveshare 3.5 DPI: overlays installed, config.txt updated for 640x480 capacitive"
+echo "Waveshare 3.5 DPI: overlays installed, config.txt updated for ${W}x${H} capacitive (keep_pimidi=${KEEP_PIMIDI})"
