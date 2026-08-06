@@ -127,7 +127,8 @@ reason the suite doesn't.
 | MIDI | 2× TRS jacks (A/B switchable) = **1 In / 1 Out** · USB MIDI device · USB MIDI **host** |
 | Audio | Teensy Audio Library: 44.1 kHz, `AUDIO_BLOCK_SAMPLES` 128 (2.90 ms), int16 |
 
-Two notes on the spec, both now settled:
+The board is a **Teensy 4.1** (confirmed), and every budget in §6 is keyed to
+its memory map. Two notes on the spec, both now settled:
 
 - The "1 MB" figure on a Teensy 4.1 is **RAM**, not flash — flash is 8 MB.
   That distinction matters a lot here, because flash is not the constraint
@@ -718,12 +719,9 @@ their *function* is either irrelevant or already covered above.
    (§4.5)? If yes, I'll add the PRNG switch and the emitter on this side.
 5. **Is the TRS A/B switch software-controllable** on your board, or a
    jumper? Determines whether it's a config field or a manual note.
-6. **Which board, exactly?** This document is written against the **Teensy
-   4.1** memory map (1 MB RAM / 8 MB flash / 16 MB `EXTMEM`). If the boards
-   are something else — a variant, a clone, or a revision I don't have specs
-   for — send me the part and I'll re-derive §6.1, because every budget in
-   this document is keyed to that map. The PSRAM half is settled either way:
-   2× 8 MB populated, 16 MB contiguous.
+
+*(Board identity and memory sizing were open here and are now settled — see
+§2: Teensy 4.1, 1 MB RAM / 8 MB flash / 16 MB populated `EXTMEM`.)*
 
 ---
 
