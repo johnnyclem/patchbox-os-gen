@@ -412,6 +412,14 @@ Not yet verified on hardware: kmsdrm DRM-master handover latency on the
 real panel (the deck retries `set_mode` for ~4 s), and JACK-vs-ALSA
 behaviour with two audio apps live.
 
+**Touch fix (finger→mouse):** every Ranger unit pins
+`SDL_TOUCH_MOUSE_EVENTS=0` (same as RK-00pi), but the suite GUIs only
+listened for `MOUSEBUTTON*`. Capacitive HID bars emit `FINGER*` only, so
+the deck painted perfectly and every tile tap was dropped. Fixed in
+`apps/rangerkit/gui/touch.py` and wired through RangerDeck + all seven
+apps. Rebuild the image (or rsync the updated trees onto a live unit) for
+taps to work on the real panel.
+
 ---
 
 ## HDMI 1280×400 notes

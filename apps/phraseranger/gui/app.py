@@ -17,7 +17,7 @@ from pathlib import Path
 import pygame
 
 from rangerkit import enginebase as base
-from rangerkit.gui import theme
+from rangerkit.gui import theme, touch
 from rangerkit.gui.widgets import HitMap, button, close_badge, column, lcd, \
     panel, row, text
 
@@ -77,6 +77,12 @@ class App:
         self._message = ""
         self._message_until = 0
         self._ports: tuple[str, ...] = ()
+
+        # Capacitive HID panels emit FINGER* only; the unit pins SDL's mouse
+        # synthesis off. Own the translation so every tap reaches a hit map.
+        mode = touch.configure()
+        self.touch = touch.TouchTranslator(size, mode)
+        log.info("touch: %s (%s)", mode, self.touch.status())
 
         pygame.display.init()
         pygame.font.init()
@@ -197,7 +203,10 @@ class App:
         return 0
 
     def _events(self) -> None:
-        for event in pygame.event.get():
+        for raw in pygame.event.get():
+            event = self.touch.translate(raw)
+            if event is None:
+                continue
             if event.type == pygame.QUIT:
                 self.running = False
                 return

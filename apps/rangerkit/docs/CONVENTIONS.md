@@ -48,15 +48,21 @@ the repo, under pytest, and on the device (where the install stage vendors
    resolves 1280×400 (side rails), 800×480 and 480×800 (stacked). GUI tests
    run all three (`rangerkit.testkit.GEOMETRIES`) and assert every drawn
    control is a registered hit target.
-7. **Hardware arrives as commands.** The button (`/run/<app>/button.sock`)
+7. **Finger → mouse in every GUI.** Capacitive USB-HID panels emit
+   `FINGER*` only; the kiosk unit pins `SDL_TOUCH_MOUSE_EVENTS=0`. Every
+   App owns a `rangerkit.gui.touch.TouchTranslator` (configured *before*
+   `display.init`) and runs every event through it. Without this the panel
+   paints perfectly and every tap — including RangerDeck tile launches —
+   is silently dropped.
+8. **Hardware arrives as commands.** The button (`/run/<app>/button.sock`)
    and the pots (MIDI CC learn, or `/run/<app>/pots.sock`, see
    `rangerkit.pots`) both end as commands in the same engine queue as touch.
-8. **Audio honesty.** Internal render is 48 kHz float32, block 256 frames.
+9. **Audio honesty.** Internal render is 48 kHz float32, block 256 frames.
    "192 kHz" is the DAC path, not the synthesis rate, and READMEs say so.
-9. **Timing.** PPQN 96; absolute-deadline `RealClock`; `FakeClock` in tests
-   drives the *same* `step()` playback uses — there is no simulation path.
-   MIDI clock in via `ExternalClock` (24 PPQ), out at `PPQN // 24`.
-10. **Config is deployment state only.** Shared sections come from
+10. **Timing.** PPQN 96; absolute-deadline `RealClock`; `FakeClock` in tests
+    drives the *same* `step()` playback uses — there is no simulation path.
+    MIDI clock in via `ExternalClock` (24 PPQ), out at `PPQN // 24`.
+11. **Config is deployment state only.** Shared sections come from
     `rangerkit.configbase`; app tables live under the app's own name and are
     read from `RangerConfig.extra`. Missing file → defaults; malformed →
     raise; unknown keys → dropped.

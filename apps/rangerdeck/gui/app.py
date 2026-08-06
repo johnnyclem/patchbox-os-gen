@@ -19,7 +19,7 @@ import time
 
 import pygame
 
-from rangerkit.gui import theme
+from rangerkit.gui import theme, touch
 from rangerkit.gui.widgets import HitMap, panel, rule, text
 
 from core.engine import BACKGROUND, OFF, SHOWN, STARTING
@@ -48,6 +48,11 @@ class App:
         self._message = ""
         self._message_until = 0
         self.chrome = HitMap()
+        # Capacitive HID panels emit FINGER* only; the unit pins SDL's mouse
+        # synthesis off. Own the translation so a tap can launch a tile.
+        mode = touch.configure()
+        self.touch = touch.TouchTranslator(size, mode)
+        log.info("touch: %s (%s)", mode, self.touch.status())
         self._open_display()
         self.clock = pygame.time.Clock()
 
@@ -71,6 +76,7 @@ class App:
             raise RuntimeError(f"panel would not open: {last}")
         pygame.display.set_caption(f"{APP_NAME} {__version__}")
         pygame.mouse.set_visible(not self.fullscreen)
+        self.touch.resize(self.size)
 
     # --- host protocol -------------------------------------------------------
     def now_ms(self) -> int:
@@ -93,7 +99,10 @@ class App:
         return 0
 
     def _events(self) -> None:
-        for event in pygame.event.get():
+        for raw in pygame.event.get():
+            event = self.touch.translate(raw)
+            if event is None:
+                continue
             if event.type == pygame.QUIT:
                 self.running = False
                 return
@@ -145,8 +154,9 @@ class App:
                 self.fleet.stop(name)
                 self.message(f"{guest_title.upper()}: NO ANSWER — STOPPED")
                 return False
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
+            for raw in pygame.event.get():
+                event = self.touch.translate(raw)
+                if event is not None and event.type == pygame.QUIT:
                     self.running = False
                     return False
             self._draw()

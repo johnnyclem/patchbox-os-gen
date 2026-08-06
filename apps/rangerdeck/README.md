@@ -14,6 +14,25 @@ python main.py --size 480x800     # portrait panel
 python main.py --fullscreen       # the appliance
 ```
 
+## How to launch an app (on the device)
+
+The deck is a **tile grid**. Tap a coloured tile → that app takes the
+panel. While it is open, the top-left **✕** hands the panel back (music
+keeps running; the tile says RUNNING). Tap the tile again to re-show it;
+the tile's **■** stops the rig for real.
+
+If the grid paints but **taps do nothing**, touch is not reaching the
+app — not a "how do I load" mystery. Check HDMI *and* the USB touch cable,
+then:
+
+```
+patchbox-display-status
+sudo patchbox-touch-probe          # tap the glass; expect ABS/BTN lines
+journalctl -u rangerdeck -b -n 40  # look for "touch: native (N device(s))"
+```
+
+Zero devices usually means the service user is not in group `input`.
+
 ## How the handover works
 
 There is one panel and one DRM master, so the deck and its guests never
