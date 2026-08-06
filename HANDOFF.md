@@ -341,6 +341,18 @@ git submodule update --init --remote RK-00pi
 
 ---
 
+## Ranger suite on Teensy — `micro-rangers` fork
+
+A port of the Ranger suite to the MicroDexed-touch fork **micro-rangers**
+(Teensy 4.1, 16 MB PSRAM, 16 GB SD, 320×240 touch, 2 encoders, 1×TRS In /
+1×TRS Out, USB MIDI host) is handed off in
+[`docs/micro-rangers/HANDOFF.md`](docs/micro-rangers/HANDOFF.md) — that file
+is written to be copied to the root of the fork. Nothing in this repo builds
+for Teensy; `apps/` is the reference implementation the port reads as a
+specification.
+
+---
+
 ## HDMI 1280×400 notes
 
 Applied by `stage3/09-hdmi-ultrawide`:
@@ -565,6 +577,8 @@ config.waveshare35-pimidi.example
 SOAK-PROFILE-A.md                 # on-device soak (Profile A)
 RK-00pi/                          # submodule (main app) @ e286646
 apps/chordranger/                 # second app (in-repo, not a submodule)
+apps/rangerkit/                   # shared runtime for the six newer apps
+docs/micro-rangers/HANDOFF.md     # Teensy 4.1 port handoff (micro-rangers fork)
 stage3/02-install-pisound/
 stage3/08-install-waveshare-dpi/  # Profile C panel
 stage3/09-hdmi-ultrawide/         # ElecLab HDMI + touch helpers + patchbox-soak
