@@ -104,6 +104,11 @@ ENABLE_PHRASERANGER="${ENABLE_PHRASERANGER:-1}"
 ENABLE_SCENERANGER="${ENABLE_SCENERANGER:-1}"
 ENABLE_GROOVERANGER="${ENABLE_GROOVERANGER:-1}"
 ENABLE_SYNTHRANGER="${ENABLE_SYNTHRANGER:-1}"
+# RangerDeck: the suite launcher (apps/rangerdeck). Installing costs one
+# small venv; it only *boots* when RANGER_BOOT_APP=rangerdeck — that is
+# the config.rangers build, where tapping a tile lends the panel to an app
+# and its ✕ hands it back with the engine still running.
+ENABLE_RANGERDECK="${ENABLE_RANGERDECK:-1}"
 
 # Per-app panel override; empty → HyperPixel / Waveshare / HDMI
 # (same resolution order as RK-00pi and ChordRanger).
@@ -119,6 +124,8 @@ GROOVERANGER_WIDTH="${GROOVERANGER_WIDTH:-}"
 GROOVERANGER_HEIGHT="${GROOVERANGER_HEIGHT:-}"
 SYNTHRANGER_WIDTH="${SYNTHRANGER_WIDTH:-}"
 SYNTHRANGER_HEIGHT="${SYNTHRANGER_HEIGHT:-}"
+RANGERDECK_WIDTH="${RANGERDECK_WIDTH:-}"
+RANGERDECK_HEIGHT="${RANGERDECK_HEIGHT:-}"
 
 # Off: Waveshare 3.5" DPI 640×480 capacitive (Profile C — use config.waveshare35-pimidi)
 ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"

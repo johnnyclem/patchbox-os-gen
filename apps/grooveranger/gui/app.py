@@ -20,8 +20,8 @@ import pygame
 
 from rangerkit import enginebase as base
 from rangerkit.gui import theme
-from rangerkit.gui.widgets import HitMap, button, column, lcd, panel, row, \
-    text
+from rangerkit.gui.widgets import HitMap, button, close_badge, column, lcd, \
+    panel, row, text
 
 from core import commands as cmd
 from core.commands import GrSnapshot
@@ -66,12 +66,17 @@ class App:
     def __init__(self, engine, size=(theme.WIDTH, theme.HEIGHT),
                  fullscreen: bool = False, config=None,
                  project_path: Path | None = None, pots=None,
-                 sampler=None) -> None:
+                 sampler=None, deck: bool = False) -> None:
         self.engine = engine
         self.config = config
         self.project_path = project_path
         self.pots = pots
         self.sampler = sampler
+        # Under the RangerDeck launcher the chrome grows a ✕ that closes the
+        # picture and nothing else; run() reports which exit the user took
+        # through exit_reason ("hide" back to the deck, "quit" for real).
+        self.deck = deck
+        self.exit_reason = "quit"
         self.running = False
         self._message = ""
         self._message_until = 0
@@ -86,7 +91,8 @@ class App:
         pygame.mouse.set_visible(not fullscreen)
         self.clock = pygame.time.Clock()
 
-        self.layout = theme.Layout.for_size(size, len(SCREENS))
+        self.layout = theme.Layout.for_size(size, len(SCREENS),
+                                            close_button=deck)
         self.chrome = HitMap()
         self.screens = [screen(self, self.layout.content)
                         for screen in SCREENS]
@@ -271,6 +277,9 @@ class App:
             return False
         if key.startswith("tab"):
             self._switch(int(key[3:]))
+        elif key == "deck-close":
+            self.exit_reason = "hide"
+            self.running = False
         elif key == "play":
             self.engine.submit(base.TogglePlay())
         elif key == "fill":
@@ -298,6 +307,8 @@ class App:
         screen.draw(self.surface)
         self._draw_transport(snapshot)
         self._draw_tabs()
+        if self.layout.close is not None:
+            close_badge(self.surface, self.chrome, self.layout.close)
         self._draw_message()
 
     def _draw_transport(self, snapshot: GrSnapshot) -> None:

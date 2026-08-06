@@ -11,3 +11,4 @@ phraseranger
 sceneranger
 grooveranger
 synthranger
+rangerdeck

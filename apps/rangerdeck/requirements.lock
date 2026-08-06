@@ -1,0 +1,9 @@
+# Pinned dependency set for the 0.1.0 image.
+#
+# The install stage tries this first and falls back to the floors in
+# requirements.txt package by package, so a pin that will not build under
+# qemu costs you a pin and not a boot.
+pygame==2.6.1
+
+# Development / CI
+pytest==9.1.1

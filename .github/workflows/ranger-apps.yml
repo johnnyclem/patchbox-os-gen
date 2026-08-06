@@ -31,6 +31,7 @@ on:
       - 'apps/sceneranger/**'
       - 'apps/grooveranger/**'
       - 'apps/synthranger/**'
+      - 'apps/rangerdeck/**'
       - 'stage3/*-install-rangerkit/**'
       - 'stage3/*-install-midiranger/**'
       - 'stage3/*-install-genranger/**'
@@ -38,6 +39,7 @@ on:
       - 'stage3/*-install-sceneranger/**'
       - 'stage3/*-install-grooveranger/**'
       - 'stage3/*-install-synthranger/**'
+      - 'stage3/*-install-rangerdeck/**'
       - '.github/workflows/ranger-apps.yml'
   pull_request:
     paths: *paths
@@ -51,7 +53,7 @@ jobs:
       matrix:
         # Apps join this list in the PR that lands them, in build order.
         app: [rangerkit, midiranger, genranger, phraseranger, sceneranger,
-              grooveranger, synthranger]
+              grooveranger, synthranger, rangerdeck]
         # 3.11 is what Bookworm ships and therefore what the appliance runs;
         # 3.12 is the canary for the next Raspberry Pi OS base.
         python-version: ['3.11', '3.12']
@@ -129,7 +131,8 @@ jobs:
           for stage in stage3/*-install-rangerkit stage3/*-install-midiranger \
                        stage3/*-install-genranger stage3/*-install-phraseranger \
                        stage3/*-install-sceneranger stage3/*-install-grooveranger \
-                       stage3/*-install-synthranger; do
+                       stage3/*-install-synthranger \
+                       stage3/*-install-rangerdeck; do
             [ -d "$stage" ] || continue
             echo "stage: $stage"
             [ -f "$stage/01-run.sh" ] && bash -n "$stage/01-run.sh"

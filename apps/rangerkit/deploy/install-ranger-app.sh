@@ -241,6 +241,17 @@ for group in audio video render input; do
 done
 
 chown -R "\${APP_USER}:\${APP_USER}" "\${PREFIX}" "\${DATA_DIR}"
+
+# ranger: the suite-wide group. RangerDeck spawns guest apps as *its* user
+# (they are children of the deck process, not units), so every app's
+# writable data crosses users through this one group — setgid so files a
+# guest saves stay reachable by the app's own unit afterwards.
+getent group ranger >/dev/null 2>&1 || groupadd -r ranger
+usermod -aG ranger "\${APP_USER}" || true
+chgrp -R ranger "\${DATA_DIR}" || true
+chmod -R g+w "\${DATA_DIR}" || true
+find "\${DATA_DIR}" -type d -exec chmod g+s {} + 2>/dev/null || true
+
 chown root:"\${APP_USER}" "\${CONFIG_DIR}" "\${CONFIG_DIR}/config.toml" 2>/dev/null || true
 chmod 755 "\${CONFIG_DIR}"
 chmod 644 "\${CONFIG_DIR}/config.toml"

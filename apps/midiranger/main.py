@@ -44,6 +44,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--config", type=Path, default=None,
                         help="config.toml (appliance: "
                              "/etc/midiranger/config.toml)")
+    parser.add_argument("--deck-socket", type=Path, default=None,
+                        metavar="SOCK",
+                        help="run under the RangerDeck launcher: build the "
+                             "rig, then show/hide the GUI on command over "
+                             "this socket (the engine survives every hide)")
     parser.add_argument("--verbose", action="store_true")
     return parser.parse_args(argv)
 
@@ -198,6 +203,39 @@ def run_gui(args: argparse.Namespace, config) -> int:
         shutdown_rig(engine, midi, button, pots)
 
 
+def run_deck(args: argparse.Namespace, config) -> int:
+    """Guest of the RangerDeck launcher: one rig, a GUI that comes and goes.
+
+    The ✕ the deck layout adds only closes the picture — the engine, MIDI,
+    button and pots stay up between shows, so arps and the transport play
+    straight through a trip back to the launcher.
+    """
+    from rangerkit.deck import run_deck_session
+    from rangerkit.gui import theme
+
+    from gui.app import App
+
+    theme.apply(config.display.theme)
+    size = (parse_size(args.size) if args.size is not None
+            else (config.display.width, config.display.height))
+    engine, midi, button, pots = build_rig(args.project, config)
+
+    def make_app():
+        app = App(engine, size=size,
+                  fullscreen=args.fullscreen or config.display.fullscreen,
+                  config=config, project_path=args.project, pots=pots,
+                  deck=True)
+        if button is not None:
+            button.on_message = app.message
+            app.wire_save(button)
+        return app
+
+    try:
+        return run_deck_session(make_app, args.deck_socket, "midiranger")
+    finally:
+        shutdown_rig(engine, midi, button, pots)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv if argv is not None else sys.argv[1:])
     logging.basicConfig(
@@ -205,6 +243,8 @@ def main(argv: list[str] | None = None) -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     from core.config import load_config
     config = load_config(args.config)
+    if args.deck_socket is not None:
+        return run_deck(args, config)
     if args.headless:
         return run_headless(args.project, config)
     return run_gui(args, config)

@@ -1,0 +1,6 @@
+# RangerDeck runtime dependencies (floors, not pins — see requirements.lock
+# for what the image actually installs).
+#
+# The launcher needs only the panel: the fleet (spawn, sockets, handover)
+# is stdlib + the vendored rangerkit.
+pygame>=2.5          # the panel (SDL2 KMS/DRM kiosk)
