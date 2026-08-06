@@ -4,6 +4,13 @@
 CI + config toggles) landed. Phases 1–6 (the six apps) follow this document,
 one app per phase, in the listed order.
 
+**2026-08-05 addendum — RangerDeck (launcher, beyond this plan's scope):**
+`apps/rangerdeck` + `stage3/21` + `rangerkit/deck.py` add a launcher build
+(`config.rangers`, 1280×400 first): the deck boots, tiles spawn apps as
+guest processes over `--deck-socket`, and each app's deck-mode ✕ hands the
+panel back while its rig keeps playing. All seven apps (incl. ChordRanger)
+speak the protocol; kiosk-units/patchbox-app/CI know the deck.
+
 ## Context
 
 The dev site (https://xenon-hazel-finch-comet.grok.me, captured in the uploaded PDF)

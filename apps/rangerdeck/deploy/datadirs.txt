@@ -1,0 +1,4 @@
+# Writable subdirs under /var/lib/rangerdeck the install stage creates.
+# The deck keeps no projects of its own; presets exists only so the shared
+# config loader's default paths all resolve.
+presets

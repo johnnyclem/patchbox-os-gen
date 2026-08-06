@@ -1,0 +1,53 @@
+# Ranger Suite build: RangerDeck launcher + all seven apps, 1280×400 bar.
+#
+# Overlay on top of base `config` (IMG_NAME, stages, config.local). Both
+# build-docker.sh and container build.sh source base first, then this file.
+#
+# Stack (physical) — Profile A hardware, launcher software:
+#   Raspberry Pi 5
+#     ├── Blokas Pimidi (sel=0) — 2×2 TRS MIDI
+#     ├── ElecLab 7.4″ HDMI 1280×400 + USB capacitive touch
+#     └── RangerDeck at boot
+#           · tap a tile → that app takes the panel
+#           · the app's top-left ✕ → back to the launcher, with the app's
+#             clock / transport / arps / recording / playback still running
+#           · tile ■ → actually stop that app's rig
+#
+# Usage:
+#   ./build-docker.sh -c config.rangers
+#   ./build-docker.sh config.rangers      # bare path also works
+#
+# WiFi / secrets stay in config.local (do not put passwords here):
+#   cp config.local.example config.local   # fill WPA_* only
+#
+# On the device:
+#   patchbox-app status                    # rangerdeck owns the panel
+#   sudo patchbox-app enable rk00pi        # back to the classic single app
+#   echo PING | nc -U /run/rangerdeck/midiranger.sock   # poke a guest
+#
+# Notes:
+#   · RK-00pi is still installed (and one `patchbox-app enable rk00pi`
+#     away) but has no tile — it does not speak the deck protocol yet.
+#   · Two audio apps at once need JACK to share the DAC; bare ALSA is
+#     first-come-first-served and the second app runs with null audio.
+
+# The whole point of this preset: boot the launcher.
+RANGER_BOOT_APP=rangerdeck
+
+# Explicit even though these match the base defaults — this file documents
+# the build, and a base-default drift should not silently change it.
+ENABLE_HDMI_ULTRAWIDE=1
+HDMI_WIDTH=1280
+HDMI_HEIGHT=400
+ENABLE_HYPERPIXEL4=0
+ENABLE_WAVESHARE_DPI=0
+ENABLE_PIMIDI=1
+
+ENABLE_RANGERDECK=1
+ENABLE_CHORDRANGER=1
+ENABLE_MIDIRANGER=1
+ENABLE_GENRANGER=1
+ENABLE_PHRASERANGER=1
+ENABLE_SCENERANGER=1
+ENABLE_GROOVERANGER=1
+ENABLE_SYNTHRANGER=1

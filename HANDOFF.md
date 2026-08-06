@@ -9,6 +9,14 @@ multi/hot-swap MIDI). **Profile C** (Waveshare 3.5″ DPI 640×480 + Pimidi unde
 the panel) is wired in the tree — bake with `config.waveshare35-pimidi`.
 HyperPixel Profile B stays parked (glass cracked).
 
+**New (2026-08-05): the Rangers build.** `config.rangers` bakes Profile A
+hardware (1280×400 bar) booting **RangerDeck**, a launcher grid for the
+whole Ranger Suite. Tap a tile → that app takes the panel; the app's
+top-left **✕** hands the panel back to the launcher **without stopping its
+engine** — clock, transport, arps, recording and playback keep running
+while the app is backgrounded; the tile's ■ actually stops a rig. See
+[RangerDeck](#rangerdeck--the-suite-launcher-2026-08-05) below.
+
 **On-device soak:** [`SOAK-PROFILE-A.md`](SOAK-PROFILE-A.md) · on image as
 `~/SOAK-PROFILE-A.md` and `sudo patchbox-soak`.
 
@@ -186,6 +194,9 @@ kmsdrm fails with `pygame.error: kmsdrm not available`.
 | `12-install-hyperpixel4` | off | Profile B: HyperPixel 4 (parked) |
 | `10-install-rk00pi` | **on** | **Main app** + The Button bridge from `RK-00pi` |
 | `13-install-chordranger` | **on** (unit off) | **ChordRanger** from `apps/chordranger` — installed, not enabled |
+| `14-install-rangerkit` | on | `patchbox-app` kiosk switcher (rangerkit itself is vendored per app) |
+| `15…20-install-*ranger` | **on** (units off) | The six suite apps — installed, boot picked by `RANGER_BOOT_APP` |
+| `21-install-rangerdeck` | **on** (unit off) | **RangerDeck** launcher — boots when `RANGER_BOOT_APP=rangerdeck` (`config.rangers`) |
 
 ### RK-00pi layout on the image
 
@@ -350,6 +361,56 @@ A port of the Ranger suite to the MicroDexed-touch fork **micro-rangers**
 is written to be copied to the root of the fork. Nothing in this repo builds
 for Teensy; `apps/` is the reference implementation the port reads as a
 specification.
+## RangerDeck — the suite launcher (2026-08-05)
+
+`apps/rangerdeck` + `stage3/21-install-rangerdeck`. A launcher grid (one
+tile per Ranger app, 4 columns on the 1280×400 bar) that *lends* the panel:
+
+```bash
+./build-docker.sh -c config.rangers      # Profile A hardware, deck at boot
+```
+
+**The handover** (`apps/rangerkit/deck.py`, one-line protocol over
+`/run/rangerdeck/<app>.sock` — debuggable with `nc -U` like the button):
+
+1. tile tap → deck spawns `<app>/main.py --deck-socket …`; the app builds
+   its full rig (engine, MIDI, button, pots, audio) and waits
+2. deck closes its own SDL display, sends `SHOW`; app opens the panel,
+   answers `EVENT SHOWN`
+3. the app's top-left **✕** (deck mode only) closes *its picture only* and
+   sends `EVENT HIDDEN`; the deck takes the panel back and the tile says
+   RUNNING — the app's clock/transport/arps/tape never stopped
+4. tapping the tile again re-`SHOW`s the still-running rig; the tile's ■
+   sends `QUIT` and the rig closes its notes and exits
+
+All seven apps (ChordRanger + the six suite apps) speak deck mode via
+`--deck-socket`; standalone behaviour (`patchbox-app enable <app>`) is
+untouched. RK-00pi has no tile yet — still `patchbox-app enable rk00pi`.
+
+Sharing rules while several rigs run: every rig holds its own ALSA seq
+client (two backgrounded arps both play — by design; PANIC is per app);
+audio apps mix only under JACK, bare ALSA is first-come-first-served and
+the loser degrades to null audio. The PiSound button stays on the base map
+under the deck (`patchbox-app enable rangerdeck` deliberately skips the
+button swap).
+
+Plumbing notes: guests are children of the deck process (systemd stops the
+whole cgroup; every rig gets SIGTERM → clean note-off), run as the
+`rangerdeck` user, and write app data through the new suite-wide `ranger`
+group (install helper makes `/var/lib/<app>` group-writable + setgid).
+Guests spawned by the deck cannot bind `/run/<app>/button.sock` and
+degrade silently — correct, every gesture has an on-screen equivalent.
+
+Docs: [`apps/rangerdeck/README.md`](apps/rangerdeck/README.md) ·
+[`docs/ARCHITECTURE.md`](apps/rangerdeck/docs/ARCHITECTURE.md). Tests:
+`cd apps/rangerdeck && python -m pytest -q` (fleet with fakes + the full
+choreography over real sockets); every app also has
+`tests/test_deck_mode.py` (the ✕ hides, never quits). CI: `rangerdeck`
+joined the `ranger-apps.yml` matrix.
+
+Not yet verified on hardware: kmsdrm DRM-master handover latency on the
+real panel (the deck retries `set_mode` for ~4 s), and JACK-vs-ALSA
+behaviour with two audio apps live.
 
 ---
 
@@ -571,6 +632,7 @@ from **Files**. Tracks: drums/bass/chords/lead/perc/pads (GM ch layout).
 
 ```text
 config
+config.rangers                    # Rangers build: deck launcher @ 1280×400
 config.waveshare35-pimidi         # Profile C bake preset
 config.waveshare35-pimidi.example
 .gitmodules
@@ -587,6 +649,10 @@ stage3/10-install-rk00pi/files/patchbox-rk00pi-autohub
 stage3/10-install-rk00pi/tests/
 stage3/11-install-pimidi/         # TRS MIDI + KEEP flags for DPI
 stage3/13-install-chordranger/
+stage3/14-install-rangerkit/      # patchbox-app switcher (knows rangerdeck)
+stage3/21-install-rangerdeck/     # the launcher
+apps/rangerdeck/                  # launcher app (grid + fleet)
+apps/rangerkit/deck.py            # display-handover protocol (all apps)
 HANDOFF.md
 deploy/image_*.zip                # after successful build
 ```

@@ -34,6 +34,7 @@ RAIL_W = 150                    # wide: transport rail, left edge
 TAB_RAIL_W = 112                # wide: tab rail, right edge
 TRANSPORT_H = 88                # portrait: top transport band
 TABS_H = 46                     # portrait: bottom tab strip
+CLOSE_H = 48                    # deck mode: the ✕ corner, top-left
 WIDE_ASPECT = 2.0
 TOUCH_MIN = 44                  # smallest hit target we will draw
 BORDER_W = 2                    # every rule; black, never a hairline
@@ -61,13 +62,21 @@ class Layout:
     transport: pygame.Rect
     content: pygame.Rect
     tabs: tuple[pygame.Rect, ...]
+    # Deck mode only: the ✕ that hands the panel back to the launcher. It
+    # takes its corner *out of* the transport chrome rather than floating
+    # over it — nothing on an appliance panel may be covered by anything.
+    close: pygame.Rect | None = None
 
     @classmethod
-    def for_size(cls, size: tuple[int, int], tab_count: int) -> "Layout":
+    def for_size(cls, size: tuple[int, int], tab_count: int,
+                 close_button: bool = False) -> "Layout":
         width, height = size
         count = max(1, tab_count)
         if is_wide(size):
-            transport = pygame.Rect(0, 0, RAIL_W, height)
+            close = pygame.Rect(0, 0, RAIL_W, CLOSE_H) if close_button \
+                else None
+            rail_top = CLOSE_H if close_button else 0
+            transport = pygame.Rect(0, rail_top, RAIL_W, height - rail_top)
             tab_x = width - TAB_RAIL_W
             # Slice from the edges so the last tab absorbs the rounding
             # remainder instead of leaving a dead strip at the bottom.
@@ -76,15 +85,19 @@ class Layout:
                             (i + 1) * height // count - i * height // count)
                 for i in range(count))
             content = pygame.Rect(RAIL_W, 0, tab_x - RAIL_W, height)
-            return cls(width, height, True, transport, content, tabs)
-        transport = pygame.Rect(0, 0, width, TRANSPORT_H)
+            return cls(width, height, True, transport, content, tabs, close)
+        close_w = TOUCH_MIN + 12
+        close = pygame.Rect(0, 0, close_w, TRANSPORT_H) if close_button \
+            else None
+        band_x = close_w if close_button else 0
+        transport = pygame.Rect(band_x, 0, width - band_x, TRANSPORT_H)
         tabs = tuple(
             pygame.Rect(i * width // count, height - TABS_H,
                         (i + 1) * width // count - i * width // count, TABS_H)
             for i in range(count))
         content = pygame.Rect(0, TRANSPORT_H, width,
                               height - TRANSPORT_H - TABS_H)
-        return cls(width, height, False, transport, content, tabs)
+        return cls(width, height, False, transport, content, tabs, close)
 
 
 # --- colourways ---------------------------------------------------------------

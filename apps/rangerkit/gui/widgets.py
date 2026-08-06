@@ -270,3 +270,16 @@ class Stepper:
         text(surface, self.value, body, size, theme.TEXT, bold=True)
         button(surface, hits, f"{self.key}+", plus, "+", size + 2,
                pressed=pressed == f"{self.key}+")
+
+
+def close_badge(surface, hits: HitMap, rect: pygame.Rect) -> pygame.Rect:
+    """The deck-mode ✕ — hands the panel back to the launcher.
+
+    Registered as ``deck-close`` so every app's chrome handler spells the
+    hide the same way. It closes the *picture* only; the engine underneath
+    keeps its clock, arps and tape rolling, which is why the sublabel says
+    where you are going rather than warning about what you would lose.
+    """
+    inner = rect.inflate(-8, -8)
+    return button(surface, hits, "deck-close", inner, "×", 22,
+                  sub="APPS")

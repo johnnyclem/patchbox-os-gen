@@ -49,3 +49,21 @@ def test_colorways_apply_and_report():
     for name in ("industrial", "mono", "dusk"):
         assert theme.apply(name) == name
     theme.apply("industrial")
+
+
+@pytest.mark.parametrize("size", GEOMETRIES)
+def test_deck_mode_reserves_a_close_corner(size):
+    layout = theme.Layout.for_size(size, tab_count=5, close_button=True)
+    assert layout.close is not None
+    # Top-left, big enough to hit with a thumb, and carved out of the
+    # transport chrome rather than floating over it.
+    assert layout.close.topleft == (0, 0)
+    assert layout.close.width >= theme.TOUCH_MIN
+    assert layout.close.height >= theme.TOUCH_MIN
+    assert not layout.close.colliderect(layout.transport)
+    assert not layout.close.colliderect(layout.content)
+
+
+@pytest.mark.parametrize("size", GEOMETRIES)
+def test_standalone_layout_has_no_close_corner(size):
+    assert theme.Layout.for_size(size, tab_count=5).close is None

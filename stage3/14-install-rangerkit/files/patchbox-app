@@ -22,7 +22,7 @@ DEFAULT_APP=rk00pi
 # (vendored copies live under /opt/<app>/rangerkit, which may not include
 # deploy/, so the list is inlined here at install time by the stage if it
 # ever needs to differ — today they match).
-KIOSK_APPS="rk00pi chordranger midiranger genranger phraseranger sceneranger grooveranger synthranger"
+KIOSK_APPS="rk00pi chordranger midiranger genranger phraseranger sceneranger grooveranger synthranger rangerdeck"
 
 usage() {
 	cat <<'EOF'
@@ -35,7 +35,7 @@ usage: patchbox-app [status|enable <app>|disable|button <app>|logs <app>]
   logs <app>     tail that app's service journal
 
 Kiosk apps: rk00pi chordranger midiranger genranger phraseranger
-            sceneranger grooveranger synthranger
+            sceneranger grooveranger synthranger rangerdeck (the launcher)
 EOF
 }
 
@@ -165,7 +165,10 @@ cmd_enable() { # $1 app
 	require_known_installed "${app}"
 	stand_down_all_but "${app}"
 	systemctl enable "${app}.service"
-	cmd_button "${app}"
+	# The launcher deliberately has no button bridge — the PiSound button
+	# belongs to whichever guest it puts on the panel — so the base map
+	# stays in force under it.
+	[ "${app}" = rangerdeck ] || cmd_button "${app}"
 	systemctl restart "${app}.service"
 	echo
 	echo "${app} owns the panel. Every sibling kiosk unit is stopped and disabled."

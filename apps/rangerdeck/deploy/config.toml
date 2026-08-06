@@ -1,0 +1,36 @@
+# RangerDeck appliance configuration — /etc/rangerdeck/config.toml
+#
+# The launcher has no engine, MIDI or pots of its own; it needs the panel,
+# a place for its sockets, and the tile order. The install stage rewrites
+# width/height and the paths for the panel it is building for. Restart
+# after changing anything here:  sudo systemctl restart rangerdeck
+
+[display]
+# The reference panel is the 1280x400 HDMI bar. Wide panels get a 4-column
+# tile grid; portrait panels get 2 columns.
+width = 1280
+height = 400
+fullscreen = true
+# industrial (light, tuned for the washed-out bar LCD) | mono | dusk
+theme = "industrial"
+fps = 60
+
+[paths]
+# The deck keeps no projects; these exist so the shared loader and install
+# stage treat it exactly like its siblings.
+data_dir = "/var/lib/rangerdeck"
+presets_dir = "/var/lib/rangerdeck/presets"
+
+[button]
+# The PiSound button belongs to whichever guest holds the panel, not to the
+# launcher.
+enabled = false
+
+[deck]
+# Where the per-app handover sockets live. The unit's RuntimeDirectory=
+# creates and removes /run/rangerdeck, so a crash cannot strand a socket.
+run_dir = "/run/rangerdeck"
+# Tile order. An app in this list but not on the machine simply grows no
+# tile, so the whole suite can stay named on every build.
+apps = ["chordranger", "midiranger", "genranger", "phraseranger",
+        "sceneranger", "grooveranger", "synthranger"]
