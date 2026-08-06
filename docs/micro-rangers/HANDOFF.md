@@ -120,20 +120,36 @@ reason the suite doesn't.
 | MCU | Teensy 4.1 — i.MX RT1062, Cortex-M7 @ 600 MHz, single-precision FPU, 32 KB I/D cache |
 | On-chip RAM | **1024 KB**: 512 KB tightly-coupled (RAM1, split ITCM/DTCM at link time) + 512 KB OCRAM (RAM2 / `DMAMEM`) |
 | Flash | 8 MB QSPI (≈7.75 MB usable for program + `PROGMEM` data) |
-| PSRAM | **16 MB** on the bottom pads (`EXTMEM`), 2× 8 MB APS6404 |
+| PSRAM | **16 MB** on the bottom pads (`EXTMEM`) — 2× 8 MB APS6404, hand-soldered, confirmed populated on every unit |
 | SD | 16 GB SDHC in the built-in SDIO socket (4-bit, use SdFat) |
 | Display | 320×240 SPI TFT (ILI9341 class) + resistive single-touch |
 | Controls | 2 rotary encoders with push |
 | MIDI | 2× TRS jacks (A/B switchable) = **1 In / 1 Out** · USB MIDI device · USB MIDI **host** |
 | Audio | Teensy Audio Library: 44.1 kHz, `AUDIO_BLOCK_SAMPLES` 128 (2.90 ms), int16 |
 
-One note on the spec you gave me: the "1 MB" figure on a Teensy 4.1 is
-**RAM**, not flash — flash is 8 MB. That distinction matters a lot here,
-because flash is not the constraint (your firmware will land in the
-hundreds of KB) and RAM absolutely is. Budgets in §6 are written on that
-basis; if your board is genuinely a 1 MB-flash variant, tell me and the
-mode-gating strategy in §4.1 changes from "compile them all in" to
-"one ranger per firmware image".
+Two notes on the spec, both now settled:
+
+- The "1 MB" figure on a Teensy 4.1 is **RAM**, not flash — flash is 8 MB.
+  That distinction matters a lot here, because flash is not the constraint
+  (your firmware will land in the hundreds of KB) and RAM absolutely is.
+  Budgets in §6 are written on that basis, and §4.1's "compile all the modes
+  into one image" strategy depends on it.
+- **PSRAM is confirmed**: both 8 MB chips are populated on the bottom pads of
+  every board, giving 16 MB of contiguous `EXTMEM`. That is the assumption
+  the whole Phase 4 (PhraseRanger undo stacks) and Phase 6 (resident sample
+  kits) plan rests on, so it being real rather than aspirational removes the
+  largest single scoping risk in the port.
+
+**Because the chips are hand-soldered, verify them per unit.** Run PJRC's
+PSRAM memory test on every board and record the result alongside the §6.2
+measurements. A marginal joint does not fail loudly — it shows up as rare
+bit corruption in a sample kit or a stale undo level, weeks later, on one
+box out of six. Ten minutes per board now is worth days of "why does *that*
+unit glitch". If a board reports 8 MB instead of 16, the second chip's
+chip-select or its solder is the first thing to look at, and the firmware
+should refuse to boot a 16 MB-assuming build on it rather than quietly
+running with half the pool (rule 4 — degrade visibly, don't die, and never
+degrade silently).
 
 ---
 
@@ -473,7 +489,7 @@ If a redraw would overrun, drop the frame, never the tick.
 | **ITCM** (RAM1) | ~128 KB | hot code: engine `step()`, release book, audio ISR paths |
 | **DTCM** (RAM1) | ~384 KB | engine arena (active mode's state), release book, command ring, snapshot, stacks. Fastest, uncached — the sequencer lives here. |
 | **OCRAM / `DMAMEM`** (RAM2) | 512 KB | `AudioMemory()` blocks, display framebuffer (150 KB if you take option 2), SD/SdFat buffers, USB host buffers |
-| **PSRAM** (`EXTMEM`) | 16 MB | sample kits, phrase/clip pools, PhraseRanger's undo stacks, wavetables, project staging, MIDI recording buffers |
+| **PSRAM** (`EXTMEM`) | 16 MB (2× 8 MB, populated) | sample kits, phrase/clip pools, PhraseRanger's undo stacks, wavetables, project staging, MIDI recording buffers |
 | **Flash** | 8 MB | firmware (expect 400–900 KB with all 7 modes) + factory content in `PROGMEM`: presets, chord/style tables, a small factory kit |
 | **SD** | 16 GB | user projects, sample libraries, kits, logs, firmware update images |
 
@@ -497,7 +513,9 @@ free list, sized at boot, never `malloc`.
   documents an honest floor (8 voices × 4 parts at 48 kHz) precisely so a
   spec sheet can't write a cheque the DSP won't cash. Do the same here with
   *your* measured number, and put it in the fork's README.
-- PSRAM sequential and random read throughput.
+- PSRAM: PJRC's memory test (**per unit** — see §2), reported size (expect
+  16 MB; anything else is a solder fault, not a config), and sequential vs
+  random read throughput.
 - SD sustained read with SdFat on a preallocated contiguous file.
 - Full-frame and 64×64-rect SPI push times at your SPI clock.
 
@@ -678,6 +696,7 @@ their *function* is either irrelevant or already covered above.
 | SynthRanger's 4 parts × 4 engines don't fit alongside resident Dexed | **High** | Phase 0 measurement sets the ceiling; ship a documented floor (the Pi did exactly this); consider parts-share-an-engine |
 | Display redraw starves the tick loop | Medium | Drop frames, never ticks; dirty-rect; measure in Phase 1 with the gate above |
 | PSRAM latency makes sample playback stutter | Medium | Block read-ahead into OCRAM; never per-sample PSRAM access; measure in Phase 0 |
+| A hand-soldered PSRAM joint is marginal on one unit out of the batch | Medium | PJRC memory test per unit at build time (§2); firmware refuses to boot a 16 MB build on a board reporting 8 MB rather than silently halving the pool |
 | 320×240 can't carry SceneRanger's grid usefully | Medium | Redesign, don't scale (§5.2); play it before committing |
 | Fixed-capacity everything hits a ceiling mid-phase | Medium | Every pool declares its capacity in one header; overflow is a logged, visible message, never silent truncation and never a crash |
 | USB host hotplug/enumeration flakiness | Medium | Name-based binding + explicit bound/unbound UI; degrade to DIN |
@@ -699,9 +718,12 @@ their *function* is either irrelevant or already covered above.
    (§4.5)? If yes, I'll add the PRNG switch and the emitter on this side.
 5. **Is the TRS A/B switch software-controllable** on your board, or a
    jumper? Determines whether it's a config field or a manual note.
-6. **Is your board's flash really 1 MB?** If so, §4.1 flips to
-   one-ranger-per-firmware with an SD-based firmware switcher, and the mode
-   manager gets much simpler at the cost of a reboot to change instrument.
+6. **Which board, exactly?** This document is written against the **Teensy
+   4.1** memory map (1 MB RAM / 8 MB flash / 16 MB `EXTMEM`). If the boards
+   are something else — a variant, a clone, or a revision I don't have specs
+   for — send me the part and I'll re-derive §6.1, because every budget in
+   this document is keyed to that map. The PSRAM half is settled either way:
+   2× 8 MB populated, 16 MB contiguous.
 
 ---
 
