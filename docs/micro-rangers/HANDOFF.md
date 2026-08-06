@@ -34,6 +34,9 @@ The port is therefore:
 4. Bind the `internal` MIDI endpoint to the audio graph MicroDexed-touch
    already has. This is the seam that lets GrooveRanger and SynthRanger
    arrive without porting a single line of DSP.
+5. Add one thing the Pi suite never needed: **the Rig** (§4.7) — a resident
+   patchbay owning the MIDI graph, the audio graph and the instrument slots,
+   because on a single firmware those outlive every mode that uses them.
 
 Everything else in this document is detail on those four points.
 
@@ -52,6 +55,7 @@ Everything else in this document is detail on those four points.
 | 05 | **SceneRanger** | 12×8 clip/scene launcher, follow actions, scene chain | 1078 |
 | 06 | **GrooveRanger** | 12-pad sample groovebox, 16-step tracker sequencer, master FX bus | 2000 |
 | 07 | **SynthRanger** | 4-part × 4-engine polysynth (VA/FM/wavetable/PD), mod matrix, morph | 1497 |
+| 08 | **RigRanger** | **New — no Pi counterpart.** The patchbay: MIDI graph, audio graph, instrument slots (§4.7) | — |
 
 Plus `apps/rangerkit/` (~1.6k lines of shared runtime, 4.6k with tests) —
 the thing you are actually porting first.
@@ -165,7 +169,7 @@ the fork — pin it in the fork's README.
 | 2 | Commands in, snapshots out; engine runs headless | **Unchanged in shape**, different mechanism — no threads (§4.2). |
 | 3 | Nothing core-side imports pygame/audio at import time | **Becomes:** nothing in `rangercore/` includes `Arduino.h`, `Audio.h`, or any display header. Enforced by the host build (§7). |
 | 4 | Degrade, don't die | **Unchanged.** No SD card → RAM-only session + a SET-screen warning. No USB host device → endpoints greyed. Never freeze, never boot dark. |
-| 5 | One panel, one app (systemd `Conflicts=`) | **Becomes:** one firmware, one *active mode* at a time, with a mode manager (§4.1). MidiRanger's matrix is the exception — it becomes always-on plumbing. |
+| 5 | One panel, one app (systemd `Conflicts=`) | **Becomes:** one panel, one *editor*. One mode is on screen at a time (§4.1) — but the Rig (§4.7) is always resident, and whether more than one engine *sounds* at a time is an open decision (§4.7, §11 Q2). |
 | 6 | Three geometries, ≥44 px targets | **Renegotiated.** One geometry (320×240) and an encoder-first interaction model; touch floor drops to 36 px and touch is never used for fine values (§5). |
 | 7 | Hardware arrives as commands (button socket, pots) | **Unchanged in shape.** Encoders, touch, footswitch GPIO and MIDI-CC learn all end as commands in the same queue. |
 | 8 | Audio honesty: 48 kHz float32, 256-frame blocks | **Renegotiated:** 44.1 kHz int16, 128-frame blocks — say so in every README, same as the Pi side says 48 kHz. Do not let a spec sheet quote the codec's rate as the synthesis rate. |
@@ -202,12 +206,18 @@ micro-rangers/
       panel_ili9341.cpp    dirty-rect renderer
       encoders.cpp touch.cpp
       instruments.cpp      the internal endpoint → Dexed/Drumset/… (§4.6)
+    rig/               ← the resident patchbay (§4.7) — survives mode switches
+      rig.h/.cpp           slots, routes, mixer state; a saveable value
+      slots.cpp            instrument instances behind the slot endpoints
+      audiograph.cpp       the static maximal graph; patching = mixer gains
     modes/
+      rigranger/           the Rig's editor
       midiranger/ genranger/ phraseranger/ sceneranger/
       grooveranger/ synthranger/ chordranger/
         engine.cpp  screens.cpp  project.cpp
     ui/                shell (transport bar, tabs, widgets, focus ring)
-    modemgr.cpp        activate/deactivate, state save on switch
+    modemgr.cpp        activate/deactivate, state save on switch — never
+                       touches the Rig
   test/                host build: Unity or doctest, no Arduino
   tools/               golden-vector generator + comparator
 ```
@@ -218,17 +228,12 @@ state occupies the engine arena. Switching modes: quiesce (panic → release
 book empties → `assert` it is empty), save project to SD, tear down, build
 the next.
 
-**The exception is MidiRanger.** Its routing matrix is not really an app —
-it is the box's MIDI plumbing, and every other mode wants it (route the DIN
-input to the internal instrument *and* to USB host while GrooveRanger
-plays). Factor it as an always-resident service:
-
-- `MidiMatrix` (routes, thru, channel rewrite) → always on, owned by the
-  platform layer, configured from SD.
-- MidiRanger the *mode* → the matrix's editor plus the arps, quantizer,
-  harmonizer, note FX, LFOs and scenes.
-- Arps/FX are an optional insert other modes can enable. Cheap, and it's the
-  single biggest musical win available from this architecture.
+**But the modes are not the whole box.** Routing, the audio graph and the
+instrument slots outlive every mode that uses them, so they belong to a
+resident layer — **the Rig** — and not to any app. That is §4.7, and it is
+the largest structural difference between this port and the Pi suite. Read it
+before you commit to the mode manager's teardown story, because the Rig is
+what a mode switch must *not* touch.
 
 ### 4.2 Threads → three execution contexts
 
@@ -398,6 +403,144 @@ is on the Pi. `hanging_voices()` becomes a query on your voice allocator,
 and the test that ties them together (`the voice ledger empties exactly when
 the release book drains`) is the one to port first.
 
+### 4.7 RigRanger — the patchbay both graphs hang off
+
+*This section exists because of a decision recorded against §11 Q2:
+**SynthRanger owns the audio graph and the MIDI graph.** Follow that through
+and it forces an eighth ranger.*
+
+On the Pi, each app was a process that owned the whole machine and handed it
+back on exit — that is what `Conflicts=` meant, and it is why routing could
+live inside whichever app was running. Here there is **one** firmware, one
+audio graph, one codec and one set of jacks, and all of them outlive every
+mode that touches them. If an instrument app owns them, then whichever app is
+on screen dictates the topology: nothing can play together, nothing survives a
+mode switch, and "route the keyboard to the drums *and* out to the rack" has
+no home.
+
+So promote routing out of the apps entirely:
+
+- **The Rig** — always resident. Owns MIDI endpoints, instrument slots, the
+  audio graph and the routes between them. Not a mode; a layer.
+- **RigRanger** — the Rig's editor. A mode like the others, but the only one
+  whose state survives every mode switch, because the state isn't the mode's.
+
+This **supersedes §4.1's "MidiRanger's matrix becomes always-on plumbing."**
+Right shape, wrong owner. MidiRanger keeps the *processing rack* — arps,
+quantizer, harmonizer, note FX, CC LFOs, scenes — and becomes an insert the
+Rig can place in a path. The Rig owns the *graph*.
+
+**Naming.** "Ranger Wrangler" reads well out loud but breaks the family's
+`<Thing>Ranger` pattern, and `PatchRanger` collides with `Patch`, which is
+already SynthRanger's core patch type. **RigRanger** fits both: "the rig" is
+already this codebase's word for the physical setup (`routing.py`: *"The rig
+has a fixed set of physical jacks"*). Your box, your call — but pick before
+the first commit, because it lands in every path and type name.
+
+#### Prior art: read RK-00pi's hub first
+
+This is not a new invention — it is RK-00pi's hub with instrument slots
+bolted on, and RK-00pi has already been through the field failures. Its
+model: endpoints hold *names*, not client numbers; binding happens at start
+and on hotplug; `autohub` re-fits the graph to whatever hardware is actually
+present; the whole rig saves as a `.rkhub` preset; the panel exposes it as
+one **I/O** tab (PORTS · ROUTE · AUDIO).
+
+The submodule isn't checked out in this tree — `git submodule update --init
+RK-00pi` — and the failure modes it hardened against are written up in the
+repo-root `HANDOFF.md` ("MIDI binds by name, so the hub has to match the
+HAT"). Read that section before designing the Rig's binding logic; it will
+save you the same week it cost the Pi.
+
+#### What the Rig owns
+
+| | |
+|---|---|
+| **MIDI sources** | `din_in`, `usb_in`, `uhost_in`×4, **plus one per resident mode engine** |
+| **MIDI destinations** | `din_out`, `usb_out`, `uhost_out`, **plus one per instrument slot** |
+| **Instrument slots** | N slots, each holding an instance (Dexed / sample player / wavetable / MicroSynth / empty) |
+| **Audio graph** | slot outputs → mixer strips → sends → master bus → codec |
+| **Routes** | source → destination, channel filter + rewrite — `rangerkit.routing.RoutingMatrix` unchanged |
+
+Slot count N is set by Phase 0's measured RAM and CPU, not chosen now.
+
+#### Patch audio with gains, never with connections
+
+The most important implementation note in this section. Teensy's
+`AudioConnection` objects can be connected and disconnected at runtime, but
+doing it live — under the audio interrupt, with objects that must outlive the
+call — is a reliable source of clicks, dropouts and hard faults.
+
+Don't. **Instantiate the maximal graph statically at boot**: every slot wired
+to every mixer input it could ever need, every send present, nothing ever
+rewired. "Patching" is then setting mixer gains, and:
+
+- it is ISR-safe and allocation-free by construction;
+- a mute or a route change becomes a gain *ramp*, so it can't click;
+- the topology is fixed, so it can be reasoned about and tested;
+- the cost is a handful of `AudioMixer` objects (4 inputs each — chain them).
+
+The Rig's route table is then a description of which gains are open. Same
+immutable-value model as `RoutingMatrix`; the difference is that applying it
+writes gains instead of rebuilding a graph.
+
+#### The `internal` endpoint becomes N slot endpoints
+
+§4.6's seam generalizes cleanly. Instead of one `internal` destination, the
+namespace gains `slot_1 … slot_N`. **The wire encodings do not change** —
+GrooveRanger's "channel = pad index" and SynthRanger's "channel = part index"
+still hold; they simply address a slot instead of "the instrument". A mode
+that wants one sound targets one slot; a mode that wants a multitimbral rack
+targets several. Everything §4.6 says about testability with a capture
+backend survives intact.
+
+#### Topology changes must release notes
+
+Removing a route, reassigning a slot or swapping an instrument **mid-note** is
+exactly the case MidiRanger already handles on the Pi (it consults its `_thru`
+map when a route dies, because a note whose off no longer has a legal path is
+a stranded note). Generalize it:
+
+> On any topology change, the Rig notifies the affected engines, and they
+> release through their own books. **The Rig never sends a note-off itself.**
+
+That keeps rule 1 where it belongs — per engine, one owner per note — and it
+means the patchbay cannot become a second, competing source of note-offs.
+Wire this on day one; it is the exact bug class the family exists to prevent,
+and a patchbay is the most inviting place for it to reappear.
+
+#### Rigs are values, and that's the headline gesture
+
+Slots + routes + mixer state is one saveable value: `/RANGERS/rigs/*.rig`.
+Loading a rig reconfigures the whole instrument in one gesture. On a box where
+mode switching is cheap and rewiring is not, this is worth more than any
+per-app preset — and it's the natural place to ship factory setups ("drums +
+bass + pads, keyboard on slot 3").
+
+#### The question the Rig forces: one engine, or several?
+
+| | |
+|---|---|
+| **(a) One engine ticks** | The Rig persists, so slots and routes survive mode switches, but only the on-screen mode makes music. Matches the Pi. Simple. |
+| **(b) Several engines tick, one is on screen** | GrooveRanger's drums, GenRanger's bassline and SynthRanger's pads at once, mixed by the Rig. This is what a patchbay *implies* — and it is a materially better instrument. |
+
+The cost of (b) is **not** sequencer CPU. `step()` is integer table lookups
+and dictionary-free scans; three engines at 300 BPM is ~1440 steps/s, which
+is nothing on a 600 MHz M7. The cost is **RAM** (one arena per resident
+engine) and **voices** (the audio side, which was always the ceiling).
+
+**Recommendation: adopt (b)'s constraint on day one, ship (a) first.** The
+constraint is one rule —
+
+> `RangerEngine` is never a singleton. No file-scope state, no globals, arena
+> passed in, release book per instance, rng per instance.
+
+— which is free to adopt now and a rewrite to retrofit. Then going from (a)
+to (b) is a scheduling change and an arena count, not an architecture change.
+Decide *which* modes may co-reside once Phase 0's RAM numbers land; my guess
+is that a drum mode + a melodic mode + SynthRanger is the useful trio and that
+running all eight was never the point.
+
 ---
 
 ## 5. The panel: 320×240, two encoders, one finger
@@ -460,7 +603,7 @@ generalises:
 | SceneRanger 12 tracks × 8 scenes, all visible | **8 × 8** grid, 4×4 visible page (each cell 72×44), ENC 1 pages, scene column pinned. Or: track-strip view + scene list — decide by playing it. |
 | GrooveRanger 12 pads × 16 steps matrix | **classic TR row**: one selected pad, 16 steps across (16 × 18 px = 288 px, fits with margins), pad selected by a 12-cell strip above. This is a better instrument at this size, not a compromise. |
 | SynthRanger 2-octave touch keyboard | drop it. Use the DIN/USB input; add a 12-pad chromatic strip for auditioning. |
-| MidiRanger 4×5 matrix | **3 in × 4 out** (§6.3) = 12 cells at 80×44. Genuinely more readable than the Pi version. |
+| MidiRanger 4×5 matrix | RigRanger's patchbay (§4.7): hardware in/out is 3×3 = 9 cells at 100×44; slots and engine sources page in on the same grid. More readable than the Pi version. |
 
 **Rendering budget.** Full-frame 320×240×16 bit = 150 KB. Over SPI at
 30 MHz that is ~40 ms — you cannot full-redraw. Two viable strategies:
@@ -488,7 +631,7 @@ If a redraw would overrun, drop the frame, never the tick.
 | Region | Size | Put here |
 |--------|------|----------|
 | **ITCM** (RAM1) | ~128 KB | hot code: engine `step()`, release book, audio ISR paths |
-| **DTCM** (RAM1) | ~384 KB | engine arena (active mode's state), release book, command ring, snapshot, stacks. Fastest, uncached — the sequencer lives here. |
+| **DTCM** (RAM1) | ~384 KB | the Rig; one engine arena **per resident engine** (§4.7 — one under (a), several under (b)), release books, command ring, snapshots, stacks. Fastest, uncached — the sequencer lives here. |
 | **OCRAM / `DMAMEM`** (RAM2) | 512 KB | `AudioMemory()` blocks, display framebuffer (150 KB if you take option 2), SD/SdFat buffers, USB host buffers |
 | **PSRAM** (`EXTMEM`) | 16 MB (2× 8 MB, populated) | sample kits, phrase/clip pools, PhraseRanger's undo stacks, wavetables, project staging, MIDI recording buffers |
 | **Flash** | 8 MB | firmware (expect 400–900 KB with all 7 modes) + factory content in `PROGMEM`: presets, chord/style tables, a small factory kit |
@@ -534,10 +677,11 @@ TRS in, one TRS out, USB device and USB host. Remap:
 | `trs_b_in` / `trs_b_out` | **absent** | keep the ids reserved so Pi projects load; show greyed |
 | `usb_in` / `usb_out` | **`usb_in` / `usb_out`** | `usbMIDI` — to a computer |
 | — | **`uhost_in` / `uhost_out`** (new) | `USBHost_t36`, up to 4 devices merged, with a per-device filter — keeps the matrix screen small |
-| `internal` | **`internal`** | §4.6 |
+| `internal` | **`slot_1` … `slot_N`** | §4.6 generalized by the Rig — one destination per instrument slot (§4.7) |
 
-Result: **3 inputs × 4 outputs**. MidiRanger's matrix gets *more* readable at
-320×240 than it was on the bar. Project files from the Pi should load with
+Result: **3 hardware inputs × 3 hardware outputs**, plus one source per
+resident engine and one destination per slot. The hardware half of the matrix
+gets *more* readable at 320×240 than it was on the bar. Project files from the Pi should load with
 `trs_b_*` routes dropped and a message on the SET screen — rule 4, degrade
 don't die.
 
@@ -555,7 +699,8 @@ Replaces `/opt/<app>`, `/var/lib/<app>` and `/etc/<app>/config.toml`:
 ```
 /RANGERS/
   config.ini                    display · midi · clock · encoders · pots · button map
-  factory/                      shipped presets, kits, chordsets, styles
+  rigs/*.rig                    slots + routes + mixer — the whole instrument (§4.7)
+  factory/                      shipped rigs, presets, kits, chordsets, styles
   midiranger/projects/*.mrp
   genranger/projects/*.grp
   phraseranger/projects/*.prp
@@ -636,6 +781,7 @@ almost 1:1 to `apps/<app>/tests/test_engine.py`):
 | pressing every registered control produces a command the engine accepts | required |
 | voice ledger empties exactly when the release book drains | GrooveRanger, SynthRanger |
 | DIN-in → DIN-out latency under load | MidiRanger |
+| slot swap / route removal mid-note strands nothing; a mode switch leaves the Rig byte-identical; `.rig` round-trips | RigRanger, and re-run per mode |
 
 **On-device self-test.** Add a hidden SET-screen action that runs a
 90-second soak: play, churn every producer, panic, and assert the book is
@@ -654,19 +800,22 @@ architecture.
 |---|---|---|
 | **0** | Measurements (§6.2) + `native`/`teensy41` build split + `rangercore` spine: events, PPQN-96 sample clock, release book, command ring, snapshot, `RangerEngine` | Host tests green. On device: emits MIDI clock, echoes DIN→DIN, 1-hour soak with the book empty at the end. **Report the §6.2 numbers before Phase 6/7 is scoped.** |
 | **1** | Panel shell: display driver + dirty-rect/FB decision, encoders, touch calibration, tab/transport chrome, focus model, SD storage + `config.ini` | ≥25 fps on the playhead region; every control encoder-reachable; card pull mid-save loses nothing |
-| **2** | **MidiRanger** — matrix (always-on service), 4 arps, quantizer, harmonizer, note FX, CC LFOs, 8 scenes | **< 1.5 ms** DIN-in → DIN-out; 4 arps from 2 inputs + thru on a third; scene recall mid-note strands nothing; 1-hour soak |
-| **3** | **GenRanger** — 6 layers, 5 generators, Cruise, locks, seed slots, 32-entry timeline | Twin-engine determinism over 8 bars; Euclid property tests; mutate-storm leaves nothing hanging |
-| **4** | **PhraseRanger** — 8 tracks, recorder, 16-deep undo, reverse/stretch/decay, slicer | PSRAM slab allocator proven; undo peels to empty releasing everything; free-length polyrhythm |
-| **5** | **SceneRanger** — grid, launcher, follow actions, chain, slot recording | Launch-quantize boundaries exact; scene = state (absent tracks stop); grid holds the 36 px floor |
-| **6** | **GrooveRanger** — sequencer, patterns, fills, song chain, kits → the fork's existing sample engine via `internal` | Locks/probability/conditions/ratchets exact; choke cuts; voice ledger drains with the book; measured pad-voice ceiling documented |
-| **7** | **SynthRanger** — 4 parts, mod matrix, morph, presets → Dexed/MicroSynth/wavetable via `internal` | Measured voice ceiling documented in the README; morph endpoints exact; part mute releases voices |
-| **8** | **ChordRanger** — chord pads, auto-accompaniment sections, bass engine | Section changes on the bar line; style content fits flash/SD budget |
-| **9** | Cross-mode polish: mode manager state handoff, MidiRanger insert available to every mode, factory content, user manual | Mode switch is silent (no stuck notes, no click); full-suite soak |
+| **2** | **RigRanger + the Rig** (§4.7) — slots, routes, the static maximal audio graph, gain patching, `.rig` save/load, the editor screen | Keyboard → slot → codec *and* → DIN out simultaneously; slot swap and route removal mid-note strand nothing; a mode switch leaves the Rig untouched; gain-ramped mutes don't click |
+| **3** | **MidiRanger** — the processing rack as a Rig insert: 4 arps, quantizer, harmonizer, note FX, CC LFOs, 8 scenes | **< 1.5 ms** DIN-in → DIN-out; 4 arps from 2 inputs + thru on a third; scene recall mid-note strands nothing; 1-hour soak |
+| **4** | **GenRanger** — 6 layers, 5 generators, Cruise, locks, seed slots, 32-entry timeline | Twin-engine determinism over 8 bars; Euclid property tests; mutate-storm leaves nothing hanging |
+| **5** | **PhraseRanger** — 8 tracks, recorder, 16-deep undo, reverse/stretch/decay, slicer | PSRAM slab allocator proven; undo peels to empty releasing everything; free-length polyrhythm |
+| **6** | **SceneRanger** — grid, launcher, follow actions, chain, slot recording | Launch-quantize boundaries exact; scene = state (absent tracks stop); grid holds the 36 px floor |
+| **7** | **GrooveRanger** — sequencer, patterns, fills, song chain, kits → the fork's sample engine via slot endpoints | Locks/probability/conditions/ratchets exact; choke cuts; voice ledger drains with the book; measured pad-voice ceiling documented |
+| **8** | **SynthRanger** — 4 parts, mod matrix, morph, presets → Dexed/MicroSynth/wavetable via slot endpoints | Measured voice ceiling documented in the README; morph endpoints exact; part mute releases voices |
+| **9** | **ChordRanger** — chord pads, auto-accompaniment sections, bass engine | Section changes on the bar line; style content fits flash/SD budget |
+| **10** | Cross-mode polish: mode manager state handoff, factory rigs, user manual — and **(b) multi-engine** if Phase 0's RAM says yes (§4.7) | Mode switch is silent (no stuck notes, no click); full-suite soak; under (b), three engines sounding with every release book empty at the end |
 
-Phases 2 and 3 are pure MIDI and need no new subsystems — they are where you
-prove the spine is right, cheaply. Phase 4 is the first memory-pressure app.
-Phase 5 is the first hard UI problem. 6 and 7 are the audio phases and their
-scope is set by Phase 0's numbers, not by the Pi's feature list.
+Phase 2 moved to the front because everything after it binds to the Rig —
+build the patchbay before the things being patched, or every mode gets
+retrofitted. Phases 3 and 4 are pure MIDI and need no new subsystems; they
+are where you prove the spine cheaply. Phase 5 is the first memory-pressure
+app, Phase 6 the first hard UI problem. 7 and 8 are the audio phases and
+their scope is set by Phase 0's numbers, not by the Pi's feature list.
 
 ---
 
@@ -700,6 +849,9 @@ their *function* is either irrelevant or already covered above.
 | A hand-soldered PSRAM joint is marginal on one unit out of the batch | Medium | PJRC memory test per unit at build time (§2); firmware refuses to boot a 16 MB build on a board reporting 8 MB rather than silently halving the pool |
 | 320×240 can't carry SceneRanger's grid usefully | Medium | Redesign, don't scale (§5.2); play it before committing |
 | Fixed-capacity everything hits a ceiling mid-phase | Medium | Every pool declares its capacity in one header; overflow is a logged, visible message, never silent truncation and never a crash |
+| The Rig becomes a second source of note-offs and fights the release books | Medium | §4.7's rule: the Rig **notifies**, engines **release**. Test it — slot swap and route removal mid-note, per mode |
+| Live audio-graph rewiring clicks or faults | Medium | Static maximal graph, patching by mixer gain, mutes as ramps (§4.7). Never call `connect()`/`disconnect()` at runtime |
+| An engine assumes it is a singleton, blocking (b) later | Medium | Adopt the no-singleton rule on day one (§4.7) — free now, a rewrite in Phase 10 |
 | USB host hotplug/enumeration flakiness | Medium | Name-based binding + explicit bound/unbound UI; degrade to DIN |
 | Determinism quietly breaks (uninitialised state, ordering) | Medium | The twin-engine test in CI from Phase 3 onward |
 | Port drifts from the Python and the two suites diverge | **High over time** | Pin the rangerkit revision you ported from in the fork README; when you change *behaviour*, open an issue on patchbox-os-gen so the reference can follow |
@@ -710,15 +862,24 @@ their *function* is either irrelevant or already covered above.
 
 1. **Framebuffer or dirty-rect?** Costs 150 KB of OCRAM, buys a much simpler
    UI layer. Decide in Phase 1 on measured numbers.
-2. **Does Dexed stay resident in all builds**, or does SynthRanger own the
-   audio graph exclusively when active? Changes the RAM budget and the mode
-   manager's teardown story.
+2. ~~Does Dexed stay resident, or does SynthRanger own the audio graph?~~
+   **Answered: SynthRanger owns the audio graph and the MIDI graph** — which
+   is precisely why neither can belong to an app. Resolved into §4.7 (the
+   Rig). The follow-on question is the one that decision opens: **(a) one
+   engine ticks, or (b) several?** Recommendation in §4.7 — adopt (b)'s
+   no-singleton constraint on day one, ship (a) first, decide on Phase 0's
+   RAM numbers.
 3. **How many USB host devices** do you want to support concurrently? 4
    merged endpoints is my recommendation; more makes the matrix unreadable.
 4. **Do you want cross-implementation golden vectors** against the Python
    (§4.5)? If yes, I'll add the PRNG switch and the emitter on this side.
 5. **Is the TRS A/B switch software-controllable** on your board, or a
    jumper? Determines whether it's a config field or a manual note.
+6. **What is the eighth ranger called?** `RigRanger` is my recommendation
+   (§4.7): fits `<Thing>Ranger`, and "the rig" is already this codebase's
+   word for the setup. `RangerWrangler` reads better out loud but breaks the
+   pattern; `PatchRanger` collides with SynthRanger's `Patch` type. Decide
+   before the first commit — it lands in every path and type name.
 
 *(Board identity and memory sizing were open here and are now settled — see
 §2: Teensy 4.1, 1 MB RAM / 8 MB flash / 16 MB populated `EXTMEM`.)*
@@ -738,7 +899,11 @@ apps/<app>/docs/ARCHITECTURE.md           per-app invariants and rationale
 apps/<app>/core/                          the specification
 apps/<app>/tests/test_engine.py           the assertions to port
 RANGER-SUITE-PLAN.md                      how the suite was built, and why
-HANDOFF.md                                the Pi-side handoff (context only)
+HANDOFF.md                                the Pi-side handoff — and its
+                                          "MIDI binds by name" section, which
+                                          is required reading for the Rig
+RK-00pi/                                  submodule: the hub the Rig descends
+                                          from. `git submodule update --init`
 ```
 
 To run the reference implementation on a laptop and *play* an app before
