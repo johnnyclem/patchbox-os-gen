@@ -12,6 +12,8 @@ touch bar rig as its siblings.
 
 Inspirations: TR-909 · Elektron trig conditions · MPC pads · Volca Beats.
 
+![GrooveRanger PERFORM — twelve pads, pattern queue, kit and swing](docs/img/panel-1280x400-0-perform.png)
+
 ## Running it
 
 ```bash

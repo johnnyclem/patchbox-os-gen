@@ -13,6 +13,10 @@ keeps its engine — clock, transport, arps, recording, playback — running
 in its own process, and its pad shows ▶ RUNNING until you press the pad's
 ■ to shut the rig down for real. The last pad is **POWER**.
 
+![The deck at rest — one tile per installed app](docs/img/deck-1280x400-0-idle.png)
+
+![MidiRanger and GrooveRanger backgrounded, both tiles showing RUNNING](docs/img/deck-1280x400-1-running.png)
+
 ```
 python main.py                     # 1280x400 window, dev box
 python main.py --size 480x800     # portrait panel

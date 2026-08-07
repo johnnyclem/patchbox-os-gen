@@ -13,6 +13,8 @@ its siblings.
 Inspirations: RC-series loopers · OP-1 tape · Ableton looper · Electribe
 phrases.
 
+![PhraseRanger PERFORM — eight loop tracks](docs/img/panel-1280x400-0-perform.png)
+
 ## Running it
 
 ```bash
