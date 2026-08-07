@@ -100,14 +100,75 @@ def rule(surface, rect, color=None, width: int = theme.BORDER_W) -> None:
 
 
 def panel(surface, rect, color=None, shadow: bool = False,
-          border: bool = True) -> pygame.Rect:
-    """A raised surface: optional hard shadow, fill, black rule."""
+          border: bool = True, focus: bool = False) -> pygame.Rect:
+    """A raised surface: optional hard shadow, fill, black rule.
+
+    ``focus`` draws the HOT orange ring *outside* the black rule (micro-rangers
+    FOCUS mark). Press is a geometry drop elsewhere — never colour alone.
+    """
     if shadow:
         shade = rect.move(theme.SHADOW_OFF, theme.SHADOW_OFF)
         surface.fill(theme.BORDER, shade)
     surface.fill(color or theme.BG_RAISED, rect)
     if border:
         rule(surface, rect)
+    if focus:
+        focus_ring(surface, rect)
+    return rect
+
+
+def focus_ring(surface, rect, width: int | None = None) -> None:
+    """HOT orange focus frame (RADIUS 0). Drawn outside the black rule."""
+    w = width if width is not None else theme.FOCUS_W
+    ring = rect.inflate(w * 2, w * 2)
+    pygame.draw.rect(surface, theme.HOT, ring, w)
+
+
+def pad(surface, rect, *, face=None, state: str = "empty",
+        hue=None, label: str = "", sub: str = "",
+        chip=None, mark: str = "") -> pygame.Rect:
+    """A micro-rangers pad cell — EMPTY / STOPPED / QUEUED / PLAYING / …
+
+    Press is geometry (caller passes face=BG_PRESS); colour alone never means
+    pressed. ``mark`` is a centre glyph (▶ ■ ●).
+    """
+    hue = hue or theme.ACCENT
+    if face is None:
+        face = {
+            "empty": theme.BG_SUNKEN,
+            "stopped": theme.BG_RAISED,
+            "queued": theme.BG_RAISED,
+            "playing": theme.blend(theme.BG_RAISED, hue, 0.72),
+            "recording": theme.blend(theme.BG_RAISED, theme.DANGER, 0.75),
+            "armed": theme.BG_RAISED,
+            "pressed": theme.BG_PRESS,
+        }.get(state, theme.BG_RAISED)
+    # Queued = focus ring (awaiting launch). Playing is fill alone; the caller
+    # adds focus_ring when the pad *owns* the panel (SHOWN).
+    panel(surface, rect, face, shadow=state in ("playing", "recording"),
+          focus=state == "queued")
+    if chip is not None:
+        badge = pygame.Rect(rect.x + 4, rect.y + 4, 14, 10)
+        surface.fill(chip, badge)
+        rule(surface, badge, width=1)
+    ink = theme.ink_for(face)
+    if label:
+        title = pygame.Rect(rect.x + 6, rect.y + (18 if chip else 6),
+                            rect.width - 12, 22)
+        text(surface, label, title, 16, ink, bold=True, display=True,
+             align="left")
+    if sub:
+        line = pygame.Rect(rect.x + 6, rect.bottom - 36, rect.width - 12, 16)
+        text(surface, sub, line, 11, theme.blend(ink, face, 0.35),
+             align="left")
+    if mark:
+        body = pygame.Rect(rect.x, rect.y + rect.height // 3,
+                           rect.width, rect.height // 2)
+        text(surface, mark, body, 22, ink, bold=True, display=True)
+    if state == "armed":
+        # Corner tick (design: top-right mark).
+        corner = pygame.Rect(rect.right - 10, rect.y + 4, 6, 6)
+        surface.fill(theme.HOT, corner)
     return rect
 
 
@@ -141,17 +202,25 @@ def text(surface, value: str, rect, size: int = 16, color=None,
 def button(surface, hits: HitMap, key: str, rect, label: str,
            size: int = 15, active: bool = False, pressed: bool = False,
            color=None, disabled: bool = False, display: bool = True,
-           sub: str = "") -> pygame.Rect:
-    """The standard control. ``active`` fills it with *color*; ``pressed``
-    flashes it; ``disabled`` greys it and does not register a hit."""
-    accent = color or theme.ACCENT3
-    if pressed:
+           sub: str = "", kind: str = "neut", focus: bool = False
+           ) -> pygame.Rect:
+    """The standard control.
+
+    ``kind`` follows the component sheet: neut / prim / dang / dis.
+    ``pressed`` is a geometry drop (BG_PRESS), never a colour swap alone.
+    """
+    if disabled or kind == "dis":
+        face = theme.BG_SUNKEN
+        disabled = True
+    elif pressed:
         face = theme.BG_PRESS
-    elif active:
-        face = accent
+    elif active or kind == "prim":
+        face = color or theme.ACCENT
+    elif kind == "dang":
+        face = theme.DANGER
     else:
-        face = theme.tint(accent, 0.14) if color else theme.BG_RAISED
-    panel(surface, rect, face)
+        face = theme.BG_RAISED
+    panel(surface, rect, face, focus=focus)
     ink = theme.TEXT_MUTED if disabled else theme.ink_for(face)
     if sub:
         top = pygame.Rect(rect.x, rect.y + 2, rect.width, rect.height * 3 // 5)
@@ -168,19 +237,33 @@ def button(surface, hits: HitMap, key: str, rect, label: str,
 
 def lcd(surface, rect, value: str, size: int = 30, label: str = "",
         color=None) -> pygame.Rect:
-    """A readout in its own black well. On this panel the well *is* the
-    signal: a number on a light grey face reads as a label, the same number
-    in a black window reads as a value."""
+    """A readout in its own black well. Caption in LCD_DIM, value in LCD cyan."""
     surface.fill(theme.BG_LCD, rect)
     rule(surface, rect)
     body = rect
     if label:
         head = pygame.Rect(rect.x, rect.y + 2, rect.width, 14)
-        text(surface, label, head, 10, theme.blend(theme.BG_LCD,
-                                                   theme.DISPLAY, 0.55),
-             display=True)
+        text(surface, label, head, 10, theme.DISPLAY_DIM, display=True)
         body = pygame.Rect(rect.x, rect.y + 12, rect.width, rect.height - 12)
     text(surface, value, body, size, color or theme.DISPLAY, bold=True)
+    return rect
+
+
+def toast(surface, rect, value: str) -> pygame.Rect:
+    """LCD voice strip — black well, cyan type (MIDI LEARN · …)."""
+    surface.fill(theme.BG_LCD, rect)
+    rule(surface, rect)
+    text(surface, value, rect, 14, theme.DISPLAY, bold=True, display=True,
+         align="left", pad=12)
+    return rect
+
+
+def chip(surface, rect, label: str, color=None, active: bool = False) -> pygame.Rect:
+    """Small status chip (UPDATE · TAP, SC 1–5/8, …)."""
+    face = color or (theme.ACCENT if active else theme.BG_LCD)
+    surface.fill(face, rect)
+    rule(surface, rect)
+    text(surface, label, rect, 12, theme.ink_for(face), bold=True, display=True)
     return rect
 
 

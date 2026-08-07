@@ -34,3 +34,19 @@ run_dir = "/run/rangerdeck"
 # tile, so the whole suite can stay named on every build.
 apps = ["chordranger", "midiranger", "genranger", "phraseranger",
         "sceneranger", "grooveranger", "synthranger"]
+
+[updates]
+# On launch the deck fetches the channel JSON (a tiny file in the git repo
+# you push to) and, if the commit tip moved, offers Install on the header.
+# Apply runs /usr/local/sbin/patchbox-ranger-update (sudoers). Offline units
+# fail the check quietly and never block the panel.
+enabled = true
+check_on_launch = true
+# Prefer the JSON channel (one GET). Override if you fork the repo.
+channel_url = "https://raw.githubusercontent.com/johnnyclem/patchbox-os-gen/patchbox-2024-01/apps/rangers-channel.json"
+# Used by patchbox-ranger-update to shallow-clone when applying.
+git_url = "https://github.com/johnnyclem/patchbox-os-gen.git"
+git_ref = "patchbox-2024-01"
+timeout_s = 4
+# true = apply without asking (usually wrong on stage — leave false).
+auto_apply = false

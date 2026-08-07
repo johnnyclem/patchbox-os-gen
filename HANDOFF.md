@@ -412,13 +412,34 @@ Not yet verified on hardware: kmsdrm DRM-master handover latency on the
 real panel (the deck retries `set_mode` for ~4 s), and JACK-vs-ALSA
 behaviour with two audio apps live.
 
+**Audio apps DIED ON START (Gen/Phrase/Groove/Synth, live unit 2026-08-07):**
+numpy 2.2.6 was in each venv but linked against `libopenblas.so.0`, and
+the image never installed `libopenblas0`. Journal: `ImportError:
+libopenblas.so.0: cannot open shared object file`. Midi/Scene/Chord
+survived because they never import numpy. Live fix:
+`sudo apt-get install -y libopenblas0`. Image fix: `libopenblas0` in
+stage3/16,17,19,20 `00-packages`, plus install smoke test that fails the
+build if numpy cannot import.
+
+**Why every build still booted full-screen RK-00pi (2026-08-06 image):**
+`build.sh` exported HDMI / RK-00pi toggles into the stage environment, but
+**never exported** `ENABLE_RANGERDECK`, `ENABLE_MIDIRANGER`, …
+`RANGER_BOOT_APP`. Stages only see exported vars, so every Ranger stage
+logged `ENABLE_*!=1 — skipping` and only `rk00pi.service` was enabled.
+`config.local` / `config.rangers` had the right values; they never left
+the shell that sourced them. Fixed by exporting the full Ranger suite in
+`build.sh`, forcing `ENABLE_RK00PI_SERVICE=0` when
+`RANGER_BOOT_APP≠rk00pi`, and printing boot app + ranger flags in the
+build banner. Rebuild with `./build-docker.sh -c config.rangers` (or
+plain `./build-docker.sh` if `config.local` already sets
+`RANGER_BOOT_APP=rangerdeck`).
+
 **Touch fix (finger→mouse):** every Ranger unit pins
 `SDL_TOUCH_MOUSE_EVENTS=0` (same as RK-00pi), but the suite GUIs only
 listened for `MOUSEBUTTON*`. Capacitive HID bars emit `FINGER*` only, so
-the deck painted perfectly and every tile tap was dropped. Fixed in
+once the deck actually boots, taps would still have been dropped. Fixed in
 `apps/rangerkit/gui/touch.py` and wired through RangerDeck + all seven
-apps. Rebuild the image (or rsync the updated trees onto a live unit) for
-taps to work on the real panel.
+apps.
 
 ---
 

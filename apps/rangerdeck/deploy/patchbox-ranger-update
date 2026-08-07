@@ -1,0 +1,187 @@
+#!/bin/bash
+# patchbox-ranger-update — pull the Ranger Suite from the configured git
+# remote and rsync sources into /opt/<app> without destroying venvs.
+#
+# Invoked by RangerDeck (sudo -n) when the operator taps Install on an
+# available update, or by hand:
+#   sudo patchbox-ranger-update
+#   sudo patchbox-ranger-update --check   # print remote vs local, no apply
+#
+# Config (optional, /etc/rangerdeck/config.toml [updates]):
+#   git_url, git_ref, channel_url
+# Env overrides: RANGER_GIT_URL, RANGER_GIT_REF, RANGER_CHANNEL_URL
+
+set -euo pipefail
+
+APPS=(rangerdeck chordranger midiranger genranger phraseranger
+      sceneranger grooveranger synthranger)
+OPT_ROOT=/opt
+STATE_DIR=/var/lib/rangerdeck
+CACHE_DIR=/var/cache/ranger-update
+CONFIG=/etc/rangerdeck/config.toml
+CHANNEL_REL=apps/rangers-channel.json
+
+GIT_URL="${RANGER_GIT_URL:-https://github.com/johnnyclem/patchbox-os-gen.git}"
+GIT_REF="${RANGER_GIT_REF:-patchbox-2024-01}"
+CHANNEL_URL="${RANGER_CHANNEL_URL:-}"
+
+log() { echo "ranger-update: $*"; }
+
+# --- optional config.toml scrape (no python required) ------------------------
+if [ -f "${CONFIG}" ]; then
+	# shellcheck disable=SC2002
+	val() { # $1 key under [updates]
+		cat "${CONFIG}" | awk -v k="$1" '
+			$0 ~ /^\[updates\]/ {insec=1; next}
+			$0 ~ /^\[/ {insec=0}
+			insec && $1 == k {
+				sub(/^[^=]*= */, "");
+				gsub(/["'\'']/, "");
+				print; exit
+			}'
+	}
+	_u="$(val git_url)";   [ -n "${_u}" ] && GIT_URL="${_u}"
+	_u="$(val git_ref)";   [ -n "${_u}" ] && GIT_REF="${_u}"
+	_u="$(val channel_url)"; [ -n "${_u}" ] && CHANNEL_URL="${_u}"
+fi
+
+CHECK_ONLY=0
+if [ "${1:-}" = "--check" ]; then
+	CHECK_ONLY=1
+fi
+
+# --- local / remote tips -----------------------------------------------------
+local_commit=""
+if [ -f "${STATE_DIR}/installed-channel.json" ]; then
+	local_commit="$(sed -n 's/.*"commit"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+		"${STATE_DIR}/installed-channel.json" | head -1)"
+elif [ -f "${OPT_ROOT}/rangerdeck/.patchbox-source-commit" ]; then
+	local_commit="$(tr -d '[:space:]' \
+		< "${OPT_ROOT}/rangerdeck/.patchbox-source-commit")"
+fi
+
+log "local  commit=${local_commit:-unknown}"
+log "remote ${GIT_URL} @ ${GIT_REF}"
+
+if [ "${CHECK_ONLY}" = "1" ]; then
+	if command -v git >/dev/null 2>&1; then
+		remote_commit="$(git ls-remote "${GIT_URL}" \
+			"${GIT_REF}" "refs/heads/${GIT_REF}" "refs/tags/${GIT_REF}" \
+			2>/dev/null | awk 'NR==1 {print $1}')"
+		log "remote commit=${remote_commit:-?}"
+		if [ -n "${local_commit}" ] && [ -n "${remote_commit}" ] \
+			&& [ "${local_commit:0:7}" = "${remote_commit:0:7}" ]; then
+			log "up to date"
+			exit 0
+		fi
+		log "update available"
+		exit 2
+	fi
+	log "git not installed — cannot check"
+	exit 1
+fi
+
+# --- shallow clone -----------------------------------------------------------
+if ! command -v git >/dev/null 2>&1; then
+	log "ERROR: git is required to apply updates"
+	exit 1
+fi
+if ! command -v rsync >/dev/null 2>&1; then
+	log "ERROR: rsync is required to apply updates"
+	exit 1
+fi
+
+rm -rf "${CACHE_DIR}"
+mkdir -p "${CACHE_DIR}"
+log "cloning (depth=1)…"
+git clone --depth 1 --branch "${GIT_REF}" "${GIT_URL}" "${CACHE_DIR}/src" \
+	|| git clone --depth 1 "${GIT_URL}" "${CACHE_DIR}/src"
+# If branch flag failed and we did a default clone, try checkout.
+if [ ! -d "${CACHE_DIR}/src/apps" ]; then
+	log "ERROR: clone has no apps/ — wrong repo?"
+	exit 1
+fi
+SRC="${CACHE_DIR}/src"
+NEW_COMMIT="$(git -C "${SRC}" rev-parse HEAD)"
+log "fetched ${NEW_COMMIT}"
+
+# --- rsync each installed app ------------------------------------------------
+updated=0
+for app in "${APPS[@]}"; do
+	if [ ! -d "${OPT_ROOT}/${app}" ]; then
+		log "skip ${app} (not installed)"
+		continue
+	fi
+	if [ ! -d "${SRC}/apps/${app}" ]; then
+		log "skip ${app} (not in source tree)"
+		continue
+	fi
+	log "sync ${app}"
+	# Preserve venv, pyc, and any local data the operator dropped under /opt.
+	rsync -a --delete \
+		--exclude 'venv/' \
+		--exclude '__pycache__/' \
+		--exclude '*.pyc' \
+		--exclude '.pytest_cache/' \
+		--exclude 'data/projects/' \
+		"${SRC}/apps/${app}/" "${OPT_ROOT}/${app}/"
+	# Fresh rangerkit into every app that vendors it (or should).
+	if [ -d "${SRC}/apps/rangerkit" ] \
+		&& { [ -d "${OPT_ROOT}/${app}/rangerkit" ] || [ -f "${OPT_ROOT}/${app}/main.py" ]; }; then
+		rm -rf "${OPT_ROOT}/${app}/rangerkit"
+		rsync -a \
+			--exclude '__pycache__/' --exclude '*.pyc' \
+			--exclude 'tests/' --exclude 'ci/' --exclude 'deploy/' \
+			--exclude 'docs/' \
+			"${SRC}/apps/rangerkit/" "${OPT_ROOT}/${app}/rangerkit/"
+	fi
+	printf '%s\n' "${NEW_COMMIT}" > "${OPT_ROOT}/${app}/.patchbox-source-commit"
+	# Ownership: service user of the same name when it exists.
+	if id "${app}" >/dev/null 2>&1; then
+		chown -R "${app}:${app}" "${OPT_ROOT}/${app}"
+		# Keep venv executable by the deck user (world-exec is normal).
+	fi
+	updated=$((updated + 1))
+done
+
+# --- record channel + optional pip refresh -----------------------------------
+mkdir -p "${STATE_DIR}"
+if [ -f "${SRC}/${CHANNEL_REL}" ]; then
+	cp "${SRC}/${CHANNEL_REL}" "${STATE_DIR}/installed-channel.json"
+else
+	cat > "${STATE_DIR}/installed-channel.json" <<EOF
+{
+  "version": "",
+  "commit": "${NEW_COMMIT}",
+  "branch": "${GIT_REF}",
+  "notes": "applied by patchbox-ranger-update",
+  "released": ""
+}
+EOF
+fi
+chmod 644 "${STATE_DIR}/installed-channel.json" 2>/dev/null || true
+if getent group rangerdeck >/dev/null 2>&1; then
+	chgrp rangerdeck "${STATE_DIR}/installed-channel.json" 2>/dev/null || true
+fi
+
+# Reinstall python deps only when the lock file changed meaningfully — full
+# pip under field conditions is slow; operators can force with FORCE_PIP=1.
+if [ "${FORCE_PIP:-0}" = "1" ]; then
+	for app in "${APPS[@]}"; do
+		[ -x "${OPT_ROOT}/${app}/venv/bin/pip" ] || continue
+		log "pip ${app}"
+		sudo -u "${app}" "${OPT_ROOT}/${app}/venv/bin/pip" install \
+			--no-cache-dir -r "${OPT_ROOT}/${app}/requirements.lock" \
+			|| sudo -u "${app}" "${OPT_ROOT}/${app}/venv/bin/pip" install \
+				--no-cache-dir -r "${OPT_ROOT}/${app}/requirements.txt" \
+			|| log "warning: pip failed for ${app}"
+	done
+fi
+
+log "updated ${updated} app(s) to ${NEW_COMMIT:0:7}"
+# Restart the deck last so the new code is what comes back.
+if systemctl is-active --quiet rangerdeck 2>/dev/null; then
+	log "restarting rangerdeck"
+	systemctl restart rangerdeck
+fi
+echo "UPDATED ${NEW_COMMIT:0:7}"

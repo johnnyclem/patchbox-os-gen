@@ -1,12 +1,17 @@
 # RangerDeck — the Ranger Suite launcher
 
-One tile per Ranger app on the 1280×400 bar (4-column grid; portrait
-panels get 2 columns). Tap a tile and the deck spawns that app and hands
+UI follows the **micro-rangers** industrial language (design handoff
+2026-08-06): RADIUS 0, 2 px hard black rules, numbers in black LCD wells,
+HOT orange focus rings, pad states (stopped / queued / playing), status
+ribbon + encoder legend chrome.
+
+One pad per Ranger app on the 1280×400 bar (4-column grid; portrait
+panels get 2 columns). Tap a pad and the deck spawns that app and hands
 it the panel; the ✕ the app grows in its top-left corner hands the panel
 back. **Closing the picture never stops the music**: a backgrounded app
 keeps its engine — clock, transport, arps, recording, playback — running
-in its own process, and its tile says RUNNING until you press the tile's
-■ to shut the rig down for real.
+in its own process, and its pad shows ▶ RUNNING until you press the pad's
+■ to shut the rig down for real. The last pad is **POWER**.
 
 ```
 python main.py                     # 1280x400 window, dev box
@@ -20,6 +25,39 @@ The deck is a **tile grid**. Tap a coloured tile → that app takes the
 panel. While it is open, the top-left **✕** hands the panel back (music
 keeps running; the tile says RUNNING). Tap the tile again to re-show it;
 the tile's **■** stops the rig for real.
+
+The last cell is **POWER** (fills the empty square on a 7-app, 4-column
+grid). Tap it for **Restart** / **Shut Down** / **Cancel**. Needs
+`/etc/sudoers.d/rangerdeck-power` (baked by `stage3/21-install-rangerdeck`).
+
+## Updates (git channel)
+
+On launch the deck checks a tiny JSON channel file in the git repo you push
+to (`apps/rangers-channel.json`). When the remote tip moves, the header
+shows **UPDATE · TAP** → **Install** / **Later**. Install runs
+`patchbox-ranger-update` (shallow clone + rsync into `/opt/*`, keeps venvs).
+
+```bash
+# After you ship a change:
+git rev-parse --short HEAD   # paste into apps/rangers-channel.json
+# edit version + notes, then:
+git add apps/rangers-channel.json && git commit && git push
+
+# On a unit (or from the panel Install button):
+sudo patchbox-ranger-update          # apply
+sudo patchbox-ranger-update --check  # compare only
+```
+
+Configure in `/etc/rangerdeck/config.toml`:
+
+```toml
+[updates]
+enabled = true
+check_on_launch = true
+channel_url = "https://raw.githubusercontent.com/<you>/patchbox-os-gen/<branch>/apps/rangers-channel.json"
+git_url = "https://github.com/<you>/patchbox-os-gen.git"
+git_ref = "<branch>"
+```
 
 If the grid paints but **taps do nothing**, touch is not reaching the
 app — not a "how do I load" mystery. Check HDMI *and* the USB touch cable,

@@ -1,0 +1,7 @@
+{
+  "version": "0.1.1",
+  "commit": "cf7df8d",
+  "branch": "patchbox-2024-01",
+  "notes": "Power tile, OpenBLAS, launch-time update channel.",
+  "released": "2026-08-07"
+}

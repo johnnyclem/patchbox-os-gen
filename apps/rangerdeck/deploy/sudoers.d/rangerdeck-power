@@ -1,0 +1,9 @@
+# RangerDeck appliance power (POWER tile) + suite updates (channel Install).
+# The service user has no graphical seat, so polkit will not allow plain
+# systemctl poweroff/reboot. Passwordless sudo for these only.
+# Both paths: bookworm usually ships systemctl at /usr/bin; some images
+# still resolve /bin/systemctl as a symlink.
+rangerdeck ALL=(root) NOPASSWD: /usr/bin/systemctl poweroff, /usr/bin/systemctl reboot
+rangerdeck ALL=(root) NOPASSWD: /bin/systemctl poweroff, /bin/systemctl reboot
+rangerdeck ALL=(root) NOPASSWD: /usr/local/sbin/patchbox-ranger-update
+rangerdeck ALL=(root) NOPASSWD: /usr/local/sbin/patchbox-ranger-update --check

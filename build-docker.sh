@@ -157,6 +157,9 @@ else
 		echo "  display: stock / none forced"
 	fi
 fi
+echo "  boot app: ${RANGER_BOOT_APP:-rk00pi}"
+echo "  rangers: deck=${ENABLE_RANGERDECK:-?} chord=${ENABLE_CHORDRANGER:-?}" \
+	"midi=${ENABLE_MIDIRANGER:-?} … (must be 1 to install)"
 echo "  pimidi:  ENABLE_PIMIDI=${ENABLE_PIMIDI:-0}  sel=${PIMIDI_SEL:-0}"
 echo "  panel:   RK00PI ${RK00PI_WIDTH:-auto}x${RK00PI_HEIGHT:-auto}"
 echo "========================================"

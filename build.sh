@@ -266,6 +266,35 @@ export RK00PI_COMPANION_ADVERTISE="${RK00PI_COMPANION_ADVERTISE:-1}"
 export RK00PI_HUB_PRESET="${RK00PI_HUB_PRESET:-}"
 export RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 export RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
+# ChordRanger + Ranger suite. Stages only see *exported* vars — without
+# these, ENABLE_* is empty in stage3 and every Ranger install is skipped
+# (Aug 2026 image: full-screen RK-00pi, no deck, no tiles).
+export ENABLE_CHORDRANGER="${ENABLE_CHORDRANGER:-1}"
+export ENABLE_CHORDRANGER_SERVICE="${ENABLE_CHORDRANGER_SERVICE:-0}"
+export CHORDRANGER_WIDTH="${CHORDRANGER_WIDTH:-}"
+export CHORDRANGER_HEIGHT="${CHORDRANGER_HEIGHT:-}"
+export RANGER_BOOT_APP="${RANGER_BOOT_APP:-rk00pi}"
+export ENABLE_MIDIRANGER="${ENABLE_MIDIRANGER:-1}"
+export ENABLE_GENRANGER="${ENABLE_GENRANGER:-1}"
+export ENABLE_PHRASERANGER="${ENABLE_PHRASERANGER:-1}"
+export ENABLE_SCENERANGER="${ENABLE_SCENERANGER:-1}"
+export ENABLE_GROOVERANGER="${ENABLE_GROOVERANGER:-1}"
+export ENABLE_SYNTHRANGER="${ENABLE_SYNTHRANGER:-1}"
+export ENABLE_RANGERDECK="${ENABLE_RANGERDECK:-1}"
+export MIDIRANGER_WIDTH="${MIDIRANGER_WIDTH:-}"
+export MIDIRANGER_HEIGHT="${MIDIRANGER_HEIGHT:-}"
+export GENRANGER_WIDTH="${GENRANGER_WIDTH:-}"
+export GENRANGER_HEIGHT="${GENRANGER_HEIGHT:-}"
+export PHRASERANGER_WIDTH="${PHRASERANGER_WIDTH:-}"
+export PHRASERANGER_HEIGHT="${PHRASERANGER_HEIGHT:-}"
+export SCENERANGER_WIDTH="${SCENERANGER_WIDTH:-}"
+export SCENERANGER_HEIGHT="${SCENERANGER_HEIGHT:-}"
+export GROOVERANGER_WIDTH="${GROOVERANGER_WIDTH:-}"
+export GROOVERANGER_HEIGHT="${GROOVERANGER_HEIGHT:-}"
+export SYNTHRANGER_WIDTH="${SYNTHRANGER_WIDTH:-}"
+export SYNTHRANGER_HEIGHT="${SYNTHRANGER_HEIGHT:-}"
+export RANGERDECK_WIDTH="${RANGERDECK_WIDTH:-}"
+export RANGERDECK_HEIGHT="${RANGERDECK_HEIGHT:-}"
 export ENABLE_WAVESHARE_DPI="${ENABLE_WAVESHARE_DPI:-0}"
 export WAVESHARE_WIDTH="${WAVESHARE_WIDTH:-640}"
 export WAVESHARE_HEIGHT="${WAVESHARE_HEIGHT:-480}"
@@ -277,6 +306,23 @@ export ENABLE_INKY_STATUS_SERVICE="${ENABLE_INKY_STATUS_SERVICE:-0}"
 export ENABLE_RASPIAUDIO="${ENABLE_RASPIAUDIO:-0}"
 export RASPIAUDIO_OVERLAY="${RASPIAUDIO_OVERLAY:-wm8960-soundcard}"
 export RASPBIAN_MIRROR="${RASPBIAN_MIRROR:-http://mirrors.ocf.berkeley.edu/raspbian/raspbian}"
+
+# One panel, one boot unit. When the deck (or any other Ranger) owns boot,
+# do not also enable rk00pi.service in stage 10 — install-ranger-app would
+# disable it later, but a half-built / CONTINUE image can strand both.
+if [ "${RANGER_BOOT_APP}" != "rk00pi" ] && [ "${ENABLE_RK00PI_SERVICE}" = "1" ]; then
+	echo "NOTE: RANGER_BOOT_APP=${RANGER_BOOT_APP} → forcing ENABLE_RK00PI_SERVICE=0"
+	ENABLE_RK00PI_SERVICE=0
+	export ENABLE_RK00PI_SERVICE
+fi
+if [ "${RANGER_BOOT_APP}" = "chordranger" ] || [ "${ENABLE_CHORDRANGER_SERVICE}" = "1" ]; then
+	ENABLE_CHORDRANGER_SERVICE=1
+	export ENABLE_CHORDRANGER_SERVICE
+	if [ "${RANGER_BOOT_APP}" = "rk00pi" ]; then
+		RANGER_BOOT_APP=chordranger
+		export RANGER_BOOT_APP
+	fi
+fi
 
 # DPI panels own the header / primary connector. Forced HDMI bar modes fight
 # pinmux and kiosk geometry. Mutual exclusion so config.local leftovers cannot
@@ -316,6 +362,11 @@ else
 	fi
 fi
 echo "  RK00PI panel: ${RK00PI_WIDTH:-auto}x${RK00PI_HEIGHT:-auto}"
+echo "  boot app: ${RANGER_BOOT_APP}  (rk00pi service=${ENABLE_RK00PI_SERVICE})"
+echo "  rangers: deck=${ENABLE_RANGERDECK} chord=${ENABLE_CHORDRANGER}" \
+	"midi=${ENABLE_MIDIRANGER} gen=${ENABLE_GENRANGER}" \
+	"phrase=${ENABLE_PHRASERANGER} scene=${ENABLE_SCENERANGER}" \
+	"groove=${ENABLE_GROOVERANGER} synth=${ENABLE_SYNTHRANGER}"
 echo "========================================"
 
 export LOCALE_DEFAULT="${LOCALE_DEFAULT:-en_GB.UTF-8}"

@@ -37,10 +37,13 @@ TABS_H = 46                     # portrait: bottom tab strip
 CLOSE_H = 48                    # deck mode: the ✕ corner, top-left
 WIDE_ASPECT = 2.0
 TOUCH_MIN = 44                  # smallest hit target we will draw
-BORDER_W = 2                    # every rule; black, never a hairline
-SHADOW_OFF = 3                  # hard offset shadow, no blur
-PAD_GAP = 4
-
+BORDER_W = 2                    # every rule; black, never a hairline (RADIUS 0)
+SHADOW_OFF = 2                  # hard offset shadow, no blur (design: 2/2 px)
+PAD_GAP = 4                     # base grid unit
+# micro-rangers chrome bands, scaled for the 1280×400 bar (design was 320×240)
+STATUS_H = 40                   # status ribbon (design 18 px → ~2×)
+LEGEND_H = 32                   # encoder legend (design 16 px → 2×)
+FOCUS_W = 3                     # orange focus ring thickness
 
 def is_wide(area) -> bool:
     """True for anything at least 2:1 — the panel, and equally the content
@@ -109,10 +112,10 @@ Rgb = tuple[int, int, int]
 class Colorway:
     """One complete palette — a value that is swapped whole, never patched.
 
-    ``ink_dark``/``ink_light`` are the two inks ``ink_for`` picks between, and
-    they are separate from ``text`` because a dark scheme's body ink is the
-    light one while its orange still needs black type. A palette with one ink
-    always loses one of those cases.
+    Tokens follow the micro-rangers design handoff (2026-08-06): RADIUS 0,
+    numbers in black LCD wells, focus is HOT orange, never colour alone for
+    press (geometry drop). ``ink_dark``/``ink_light`` are the two inks
+    ``ink_for`` picks between.
     """
 
     name: str
@@ -128,43 +131,76 @@ class Colorway:
     text_muted: Rgb
     ink_dark: Rgb
     ink_light: Rgb
-    accent: Rgb
-    accent2: Rgb
-    accent3: Rgb
+    accent: Rgb          # primary / play / rec (ACCENT2 in the handoff)
+    accent2: Rgb         # secondary warm (kept for suite compatibility)
+    accent3: Rgb         # cool secondary / chip
+    hot: Rgb             # focus ring (HOT)
     danger: Rgb
     warn: Rgb
-    display: Rgb
+    display: Rgb         # LCD cyan
+    display_dim: Rgb     # LCD caption
     parts: tuple[Rgb, ...]
 
 
-_INDUSTRIAL_INK = (16, 18, 18)
-
-# One hue per part, deep enough to hold identity on a light ground.
+# Track / part chips on a light industrial ground (LAUNCH ribbon colours).
 _LIGHT_PARTS: tuple[Rgb, ...] = (
-    (96, 62, 30), (0, 106, 176), (124, 52, 156), (0, 128, 126), (168, 96, 0))
+    (0xE8, 0x5D, 0x04), (0xC4, 0x7A, 0x4A), (0x2A, 0xA0, 0x8A),
+    (0x3A, 0x5A, 0x7A), (0xD4, 0xA0, 0x17), (0x7A, 0x4A, 0x9A),
+    (0x20, 0xA0, 0xD0), (0xC0, 0x4A, 0x8A))
 _DARK_PARTS: tuple[Rgb, ...] = (
-    (196, 140, 84), (46, 150, 220), (168, 104, 208), (40, 178, 176),
-    (218, 172, 40))
+    (0xF0, 0x90, 0x40), (0xD0, 0xA0, 0x70), (0x40, 0xC0, 0xA8),
+    (0x70, 0x90, 0xB0), (0xE8, 0xC0, 0x40), (0xB0, 0x80, 0xD0),
+    (0x50, 0xC0, 0xE8), (0xE0, 0x70, 0xB0))
 
+# micro-rangers INDUSTRIAL tokens (design handoff §Tokens).
 INDUSTRIAL = Colorway(
     name="industrial", label="INDUSTRIAL",
-    bg=(178, 182, 182), bg_raised=(206, 209, 209), bg_sunken=(232, 234, 234),
-    bg_press=(138, 143, 143), bg_lcd=(14, 16, 16), border=_INDUSTRIAL_INK,
-    text=_INDUSTRIAL_INK, text_dim=(72, 76, 76), text_muted=(124, 129, 129),
-    ink_dark=_INDUSTRIAL_INK, ink_light=(246, 247, 247),
-    accent=(0, 148, 86), accent2=(255, 90, 26), accent3=(26, 82, 196),
-    danger=(198, 34, 34), warn=(214, 142, 0), display=(86, 214, 255),
+    bg=(0xB8, 0xB4, 0xAC),          # panel face
+    bg_raised=(0xD0, 0xCC, 0xC4),    # button rest
+    bg_sunken=(0x9A, 0x96, 0x8E),    # wells, empty
+    bg_press=(0x8A, 0x86, 0x80),     # geometry press
+    bg_lcd=(0x0A, 0x0A, 0x0A),       # black well
+    border=(0x0A, 0x0A, 0x0A),       # 2 px hard rule
+    text=(0x12, 0x12, 0x12),
+    text_dim=(0x4A, 0x4A, 0x44),
+    text_muted=(0x6A, 0x6A, 0x64),
+    ink_dark=(0x12, 0x12, 0x12),
+    ink_light=(0xF6, 0xF6, 0xF4),
+    accent=(0xC4, 0x4B, 0x00),       # primary / rec
+    accent2=(0xE8, 0x5D, 0x04),      # warm secondary
+    accent3=(0x20, 0xA0, 0xD0),      # cool chip
+    hot=(0xE8, 0x5D, 0x04),          # focus ring
+    danger=(0xB9, 0x1C, 0x1C),
+    warn=(0xD4, 0xA0, 0x17),
+    display=(0x56, 0xD6, 0xFF),      # lit cyan
+    display_dim=(0x3A, 0x8A, 0x9E),  # well caption
     parts=_LIGHT_PARTS)
 
+# micro-rangers NIGHT (LAUNCH dark proof).
+NIGHT = Colorway(
+    name="night", label="NIGHT",
+    bg=(0x2A, 0x2C, 0x30), bg_raised=(0x3A, 0x3C, 0x42),
+    bg_sunken=(0x1A, 0x1C, 0x20), bg_press=(0x4A, 0x4C, 0x52),
+    bg_lcd=(0x08, 0x08, 0x0A), border=(0xE8, 0xE6, 0xE0),
+    text=(0xE8, 0xE6, 0xE0), text_dim=(0xA0, 0xA0, 0x9A),
+    text_muted=(0x70, 0x70, 0x6A),
+    ink_dark=(0x10, 0x10, 0x12), ink_light=(0xF4, 0xF2, 0xEC),
+    accent=(0xC4, 0x4B, 0x00), accent2=(0xE8, 0x5D, 0x04),
+    accent3=(0x40, 0xB0, 0xE0), hot=(0xE8, 0x5D, 0x04),
+    danger=(0xD0, 0x40, 0x40), warn=(0xE0, 0xB0, 0x30),
+    display=(0x56, 0xD6, 0xFF), display_dim=(0x3A, 0x8A, 0x9E),
+    parts=_DARK_PARTS)
+
+# Legacy aliases kept so existing configs keep working.
 MONO = Colorway(
     name="mono", label="MONO",
-    bg=(22, 24, 24), bg_raised=(48, 51, 51), bg_sunken=(76, 80, 80),
-    bg_press=(120, 126, 126), bg_lcd=(10, 11, 11), border=(216, 216, 212),
-    text=(233, 233, 231), text_dim=(166, 168, 168), text_muted=(120, 124, 124),
-    ink_dark=(12, 13, 13), ink_light=(245, 245, 243),
-    accent=(0, 196, 118), accent2=(255, 106, 31), accent3=(74, 134, 255),
-    danger=(232, 64, 54), warn=(240, 176, 32), display=(226, 224, 214),
-    parts=_DARK_PARTS)
+    bg=NIGHT.bg, bg_raised=NIGHT.bg_raised, bg_sunken=NIGHT.bg_sunken,
+    bg_press=NIGHT.bg_press, bg_lcd=NIGHT.bg_lcd, border=NIGHT.border,
+    text=NIGHT.text, text_dim=NIGHT.text_dim, text_muted=NIGHT.text_muted,
+    ink_dark=NIGHT.ink_dark, ink_light=NIGHT.ink_light,
+    accent=NIGHT.accent, accent2=NIGHT.accent2, accent3=NIGHT.accent3,
+    hot=NIGHT.hot, danger=NIGHT.danger, warn=NIGHT.warn,
+    display=NIGHT.display, display_dim=NIGHT.display_dim, parts=_DARK_PARTS)
 
 DUSK = Colorway(
     name="dusk", label="DUSK",
@@ -172,11 +208,14 @@ DUSK = Colorway(
     bg_press=(110, 118, 154), bg_lcd=(12, 13, 22), border=(226, 224, 236),
     text=(232, 231, 242), text_dim=(172, 174, 196), text_muted=(126, 130, 156),
     ink_dark=(14, 15, 24), ink_light=(244, 243, 250),
-    accent=(96, 214, 168), accent2=(255, 122, 92), accent3=(126, 156, 255),
-    danger=(226, 76, 84), warn=(238, 186, 88), display=(184, 220, 255),
+    accent=(0xC4, 0x4B, 0x00), accent2=(0xE8, 0x5D, 0x04),
+    accent3=(126, 156, 255), hot=(0xE8, 0x5D, 0x04),
+    danger=(226, 76, 84), warn=(238, 186, 88),
+    display=(184, 220, 255), display_dim=(0x3A, 0x8A, 0x9E),
     parts=_DARK_PARTS)
 
-COLORWAYS: dict[str, Colorway] = {c.name: c for c in (INDUSTRIAL, MONO, DUSK)}
+COLORWAYS: dict[str, Colorway] = {
+    c.name: c for c in (INDUSTRIAL, NIGHT, MONO, DUSK)}
 COLORWAY_NAMES = tuple(COLORWAYS)
 DEFAULT_COLORWAY = INDUSTRIAL.name
 
@@ -195,10 +234,12 @@ INK_LIGHT = INDUSTRIAL.ink_light
 ACCENT = INDUSTRIAL.accent
 ACCENT2 = INDUSTRIAL.accent2
 ACCENT3 = INDUSTRIAL.accent3
+HOT = INDUSTRIAL.hot
 DANGER = INDUSTRIAL.danger
 WARN = INDUSTRIAL.warn
 DISPLAY = INDUSTRIAL.display
-SELECT = INDUSTRIAL.accent2
+DISPLAY_DIM = INDUSTRIAL.display_dim
+SELECT = INDUSTRIAL.hot
 PART_COLORS = INDUSTRIAL.parts
 
 _active = DEFAULT_COLORWAY
@@ -212,7 +253,8 @@ def apply(name: str) -> str:
     """
     global _active, BG, BG_RAISED, BG_SUNKEN, BG_PRESS, BG_LCD, BORDER
     global TEXT, TEXT_DIM, TEXT_MUTED, INK_DARK, INK_LIGHT, ACCENT, ACCENT2
-    global ACCENT3, DANGER, WARN, DISPLAY, SELECT, PART_COLORS
+    global ACCENT3, HOT, DANGER, WARN, DISPLAY, DISPLAY_DIM, SELECT
+    global PART_COLORS
     way = COLORWAYS.get(name)
     if way is None:
         return _active
@@ -221,8 +263,10 @@ def apply(name: str) -> str:
     TEXT, TEXT_DIM, TEXT_MUTED = way.text, way.text_dim, way.text_muted
     INK_DARK, INK_LIGHT = way.ink_dark, way.ink_light
     ACCENT, ACCENT2, ACCENT3 = way.accent, way.accent2, way.accent3
-    DANGER, WARN, DISPLAY = way.danger, way.warn, way.display
-    SELECT = way.accent2
+    HOT = way.hot
+    DANGER, WARN = way.danger, way.warn
+    DISPLAY, DISPLAY_DIM = way.display, way.display_dim
+    SELECT = way.hot
     PART_COLORS = way.parts
     _active = way.name
     return _active

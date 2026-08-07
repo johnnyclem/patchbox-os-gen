@@ -283,12 +283,25 @@ if ! sudo -u "\${APP_USER}" "\${PIP}" install --no-cache-dir -r "\${PREFIX}/requ
 fi
 
 # Smoke test the import path while we still have a build log to read it in.
+# Import numpy when the app ships it — a wheel without libopenblas.so.0
+# (missing from 00-packages) only fails at runtime and shows up on the
+# deck as "DIED ON START". Catch it here.
 sudo -u "\${APP_USER}" "\${PREFIX}/venv/bin/python" - <<PY || echo "warning: import smoke test failed"
 import sys
 sys.path.insert(0, "\${PREFIX}")
 import rangerkit.enginebase
 import core.engine
 print("  \${APP}: core + rangerkit import ok")
+try:
+    import numpy
+    print("  \${APP}: numpy", numpy.__version__, "ok")
+except ImportError:
+    pass  # MIDI-only apps (midiranger, sceneranger, …) do not ship it
+except Exception as exc:
+    # Broken wheel / missing OpenBLAS — fail the build, do not ship a
+    # tile that dies on first tap.
+    print("  \${APP}: numpy import FAILED:", exc)
+    raise SystemExit(1)
 PY
 
 systemctl daemon-reload
