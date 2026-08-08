@@ -3,11 +3,14 @@
 #
 # Keep this file for secrets + machine overrides only.
 # Display profiles are selected at build time, not here:
-#   Profile A (HDMI 1280×400):  ./build-docker.sh
-#   Profile B (HyperPixel 4):   ./build-docker.sh -c config.hyperpixel4-pimidi
+#   Profile A (HDMI 1280×400 generic):  ./build-docker.sh
+#   Profile B (HyperPixel 4):           ./build-docker.sh -c config.hyperpixel4-pimidi
+#   Profile C (Waveshare 3.5 DPI):      ./build-docker.sh -c config.waveshare35-pimidi
+#   Profile D (Waveshare 7.9 HDMI):     ./build-docker.sh -c config.waveshare79-hdmi
 #
 # Do not put ENABLE_HDMI_ULTRAWIDE / RK00PI_WIDTH=1280 here if you also build
-# HyperPixel images — those leftovers used to force HDMI on every rebuild.
+# HyperPixel / Waveshare DPI images — those leftovers used to force HDMI on
+# every rebuild. Profile D is HDMI and may set HDMI_TIMINGS intentionally.
 
 # Required for client WiFi join + RF unblock on Bookworm
 WPA_COUNTRY="US"

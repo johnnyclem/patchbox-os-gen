@@ -246,6 +246,11 @@ export ENABLE_HDMI_ULTRAWIDE="${ENABLE_HDMI_ULTRAWIDE:-1}"
 export HDMI_WIDTH="${HDMI_WIDTH:-1280}"
 export HDMI_HEIGHT="${HDMI_HEIGHT:-400}"
 export HDMI_REFRESH="${HDMI_REFRESH:-60}"
+export HDMI_NATIVE_WIDTH="${HDMI_NATIVE_WIDTH:-}"
+export HDMI_NATIVE_HEIGHT="${HDMI_NATIVE_HEIGHT:-}"
+export HDMI_ROTATE="${HDMI_ROTATE:-}"
+export HDMI_TIMINGS="${HDMI_TIMINGS:-}"
+export HDMI_CONNECTOR="${HDMI_CONNECTOR:-HDMI-A-1}"
 export ENABLE_HYPERPIXEL4="${ENABLE_HYPERPIXEL4:-0}"
 export HYPERPIXEL_WIDTH="${HYPERPIXEL_WIDTH:-800}"
 export HYPERPIXEL_HEIGHT="${HYPERPIXEL_HEIGHT:-480}"
@@ -355,8 +360,13 @@ elif [ "${ENABLE_HYPERPIXEL4}" = "1" ]; then
 	echo "  stage 12 will write dtoverlay=vc4-kms-dpi-hyperpixel4"
 else
 	if [ "${ENABLE_HDMI_ULTRAWIDE}" = "1" ]; then
-		echo "  HDMI ultrawide  ${HDMI_WIDTH}x${HDMI_HEIGHT}"
-		echo "  ENABLE_HYPERPIXEL4=0 / WAVESHARE=0 — no DPI overlay"
+		if [ -n "${HDMI_TIMINGS}" ]; then
+			echo "  Waveshare 7.9 HDMI  native ${HDMI_NATIVE_WIDTH:-400}x${HDMI_NATIVE_HEIGHT:-1280}"
+			echo "  rotate=${HDMI_ROTATE:-none} → app ${HDMI_WIDTH}x${HDMI_HEIGHT}"
+		else
+			echo "  HDMI ultrawide  ${HDMI_WIDTH}x${HDMI_HEIGHT}"
+			echo "  ENABLE_HYPERPIXEL4=0 / WAVESHARE_DPI=0 — hdmi_cvt bar"
+		fi
 	else
 		echo "  stock display path (no HyperPixel, no Waveshare, no forced HDMI bar)"
 	fi

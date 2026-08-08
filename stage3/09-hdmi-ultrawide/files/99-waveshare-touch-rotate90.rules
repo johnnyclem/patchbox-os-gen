@@ -1,0 +1,4 @@
+# Waveshare 7.9" HDMI LCD — Bookworm wiki matrix for rotate=90
+# https://www.waveshare.com/wiki/7.9inch_HDMI_LCD
+# (Screen Configuration GUI "Touchscreen" checkbox does the same thing.)
+ENV{ID_INPUT_TOUCHSCREEN}=="1", ENV{LIBINPUT_CALIBRATION_MATRIX}="0 -1 1 1 0 0"

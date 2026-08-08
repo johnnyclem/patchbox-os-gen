@@ -20,12 +20,21 @@ ENABLE_FIRST_LOGIN_PASSWORD_CHANGE="${ENABLE_FIRST_LOGIN_PASSWORD_CHANGE:-1}"
 # Profile B: HyperPixel 4.0" 800×480 — config.hyperpixel4-pimidi.example
 # Profile C: Waveshare 3.5" DPI 640×480 + Pimidi — config.waveshare35-pimidi.example
 #   ./build-docker.sh -c config.waveshare35-pimidi
+# Profile D: Waveshare 7.9" HDMI 400×1280 (rotate→1280×400) — config.waveshare79-hdmi
+#   ./build-docker.sh -c config.waveshare79-hdmi
 
-# HDMI ultrawide touch monitor (custom CVT mode)
+# HDMI ultrawide touch monitor (custom CVT mode by default).
+# Waveshare 7.9 (Profile D) sets HDMI_TIMINGS + HDMI_NATIVE_* + HDMI_ROTATE
+# instead of hdmi_cvt — see stage3/09-hdmi-ultrawide/01-run.sh.
 ENABLE_HDMI_ULTRAWIDE="${ENABLE_HDMI_ULTRAWIDE:-1}"
 HDMI_WIDTH="${HDMI_WIDTH:-1280}"
 HDMI_HEIGHT="${HDMI_HEIGHT:-400}"
 HDMI_REFRESH="${HDMI_REFRESH:-60}"
+HDMI_NATIVE_WIDTH="${HDMI_NATIVE_WIDTH:-}"
+HDMI_NATIVE_HEIGHT="${HDMI_NATIVE_HEIGHT:-}"
+HDMI_ROTATE="${HDMI_ROTATE:-}"
+HDMI_TIMINGS="${HDMI_TIMINGS:-}"
+HDMI_CONNECTOR="${HDMI_CONNECTOR:-HDMI-A-1}"
 
 # Pimoroni HyperPixel 4.0" rectangular DPI (800×480 @ 60). Off by default.
 # WARNING: DPI uses almost all 40-pin GPIO — stacking Pimidi is pin-contested.

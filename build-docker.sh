@@ -116,10 +116,22 @@ if echo "${_cfg_base}" | grep -qi 'hyperpixel'; then
 		exit 1
 	fi
 fi
-if echo "${_cfg_base}" | grep -qi 'waveshare'; then
+# Waveshare 3.5 DPI profiles only — Waveshare 7.9 is HDMI (config.waveshare79-hdmi).
+if echo "${_cfg_base}" | grep -qiE 'waveshare35|waveshare-dpi|waveshare_dpi'; then
 	if [ "${ENABLE_WAVESHARE_DPI:-0}" != "1" ]; then
-		echo "ERROR: config '${CONFIG_FILE}' looks like a Waveshare profile" 1>&2
+		echo "ERROR: config '${CONFIG_FILE}' looks like a Waveshare DPI profile" 1>&2
 		echo "       but ENABLE_WAVESHARE_DPI='${ENABLE_WAVESHARE_DPI:-}' (expected 1)." 1>&2
+		exit 1
+	fi
+fi
+if echo "${_cfg_base}" | grep -qiE 'waveshare79|waveshare-79|waveshare_79'; then
+	if [ "${ENABLE_HDMI_ULTRAWIDE:-0}" != "1" ]; then
+		echo "ERROR: config '${CONFIG_FILE}' looks like Waveshare 7.9 HDMI" 1>&2
+		echo "       but ENABLE_HDMI_ULTRAWIDE='${ENABLE_HDMI_ULTRAWIDE:-}' (expected 1)." 1>&2
+		exit 1
+	fi
+	if [ -z "${HDMI_TIMINGS:-}" ]; then
+		echo "ERROR: Waveshare 7.9 profile needs HDMI_TIMINGS (wiki mode line)." 1>&2
 		exit 1
 	fi
 fi
@@ -151,8 +163,14 @@ elif [ "${ENABLE_HYPERPIXEL4:-0}" = "1" ]; then
 	echo "           rotate=${HYPERPIXEL_ROTATE:-left}  (dtoverlay=vc4-kms-dpi-hyperpixel4)"
 else
 	if [ "${ENABLE_HDMI_ULTRAWIDE:-0}" = "1" ]; then
-		echo "  display: HDMI ultrawide  ${HDMI_WIDTH:-1280}x${HDMI_HEIGHT:-400}"
-		echo "           (no DPI overlay)"
+		if [ -n "${HDMI_TIMINGS:-}" ]; then
+			echo "  display: Waveshare 7.9 HDMI  ${HDMI_WIDTH:-400}x${HDMI_HEIGHT:-1280}"
+			echo "           native ${HDMI_NATIVE_WIDTH:-400}x${HDMI_NATIVE_HEIGHT:-1280}  rotate=${HDMI_ROTATE:-none}"
+			echo "           (hdmi_timings; kmsdrm wants app size == mode)"
+		else
+			echo "  display: HDMI ultrawide  ${HDMI_WIDTH:-1280}x${HDMI_HEIGHT:-400}"
+			echo "           (hdmi_cvt; no DPI overlay)"
+		fi
 	else
 		echo "  display: stock / none forced"
 	fi
@@ -305,6 +323,11 @@ time ${DOCKER} run \
   -e "HDMI_WIDTH=${HDMI_WIDTH:-}" \
   -e "HDMI_HEIGHT=${HDMI_HEIGHT:-}" \
   -e "HDMI_REFRESH=${HDMI_REFRESH:-}" \
+  -e "HDMI_NATIVE_WIDTH=${HDMI_NATIVE_WIDTH:-}" \
+  -e "HDMI_NATIVE_HEIGHT=${HDMI_NATIVE_HEIGHT:-}" \
+  -e "HDMI_ROTATE=${HDMI_ROTATE:-}" \
+  -e "HDMI_TIMINGS=${HDMI_TIMINGS:-}" \
+  -e "HDMI_CONNECTOR=${HDMI_CONNECTOR:-}" \
   -e "ENABLE_HYPERPIXEL4=${ENABLE_HYPERPIXEL4:-}" \
   -e "HYPERPIXEL_WIDTH=${HYPERPIXEL_WIDTH:-}" \
   -e "HYPERPIXEL_HEIGHT=${HYPERPIXEL_HEIGHT:-}" \

@@ -446,7 +446,8 @@ git submodule update --init --recursive
 
 Display mode is forced via `hdmi_cvt` / `hdmi_mode=87` and cmdline
 `video=HDMI-A-1:1280x400@60D` (`stage3/09-hdmi-ultrawide`). Override with
-`HDMI_WIDTH` / `HDMI_HEIGHT` / `HDMI_REFRESH`.
+`HDMI_WIDTH` / `HDMI_HEIGHT` / `HDMI_REFRESH`. For the Waveshare 7.9" panel
+use Profile D below (exact `hdmi_timings` + `rotate=90`) instead of generic CVT.
 
 This is also the hardware [the Ranger Suite](#the-ranger-suite) is drawn for.
 Same rig, different boot app: `./build-docker.sh -c config.rangers` boots
@@ -496,9 +497,53 @@ Pi + Blokas Pimidi (40-pin) — 2×2 TRS MIDI
 
 Stacking Pimidi under a full-GPIO DPI panel is **experimental**
 (`WAVESHARE_KEEP_PIMIDI=1`). If the panel stays black or touch dies, rebuild
-with `WAVESHARE_KEEP_PIMIDI=0` and use USB MIDI, or stay on Profile A for
+with `WAVESHARE_KEEP_PIMIDI=0` and use USB MIDI, or stay on Profile A / D for
 conflict-free TRS. On-device: `~/WAVESHARE-DPI.txt`,
 `sudo patchbox-fix-waveshare-dpi`.
+
+### Alternate stack: Waveshare 7.9″ HDMI (Profile D)
+
+```text
+Pi 5 + Pimidi (40-pin — free; HDMI does not steal GPIO)
+    + Waveshare 7.9inch HDMI LCD
+        · native 400×1280 IPS + USB capacitive touch
+        · RK-00pi at 400×1280 (portrait chrome — top transport / bottom tabs)
+```
+
+Wiki: [7.9inch HDMI LCD](https://www.waveshare.com/wiki/7.9inch_HDMI_LCD)
+
+**Build command:**
+
+```bash
+./build-docker.sh -c config.waveshare79-hdmi
+```
+
+Stage `09-hdmi-ultrawide` writes the vendor mode line (not `hdmi_cvt`):
+
+```text
+hdmi_group=2
+hdmi_mode=87
+hdmi_timings=400 0 70 10 60 1280 0 20 10 12 0 0 0 60 0 43000000 3
+# cmdline (no rotate — see below):
+video=HDMI-A-1:400x1280M@60
+```
+
+**Why no `rotate=90`:** the wiki rotation works for the console, but SDL
+`kmsdrm` often still opens the 400-wide mode while the app requests 1280×400.
+That wraps each scanline three times (`1280/400`) — three distorted portrait
+strips — then the client dies and the panel goes black. Matching app size to
+the native mode is the reliable kiosk path.
+
+Field-fix a card that still has rotate + 1280×400 (mount boot + root if
+possible):
+
+```bash
+./scripts/fix-waveshare79-bootfs.sh /Volumes/bootfs /Volumes/rootfs
+```
+
+Hardware: HDMI + USB touch both required; at high brightness feed 5V/2A into
+the panel Power jack if the Pi USB port browns out. Rear **Rotate Touch**
+button if axes feel wrong.
 
 Parked / opt-in: Inky e-paper, RaspiAudio I2S — each conflicts with Pisound
 and/or the chosen UI.
@@ -537,12 +582,13 @@ on the unit with `patchbox-rk00pi-autohub` (read-only) and repair with
 | `RANGER_BOOT_APP` | `rk00pi` | Which kiosk app boots — any Ranger app, or `rangerdeck` for the launcher. Anything but `rk00pi` disables `rk00pi.service` |
 | `ENABLE_RANGERDECK` | `1` | Install [RangerDeck](apps/rangerdeck/README.md), the suite launcher |
 | `ENABLE_CHORDRANGER` | `1` | Install ChordRanger from `apps/chordranger` |
-| `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi (implies `RANGER_BOOT_APP=chordranger`) |
-| `ENABLE_MIDIRANGER` / `GENRANGER` / `PHRASERANGER` | `1` | Install those [Ranger apps](#the-ranger-suite) |
-| `ENABLE_SCENERANGER` / `GROOVERANGER` / `SYNTHRANGER` | `1` | Install those Ranger apps |
-| `<APP>_WIDTH` / `<APP>_HEIGHT` | unset | Force one app's panel geometry (else it follows the display profile) |
-| `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch (Profile A — primary) |
-| `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | HDMI panel geometry |
+| `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi |
+| `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI bar + USB touch (Profile A default; Profile D also uses this) |
+| `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | **App-facing** geometry (after any rotate) |
+| `HDMI_TIMINGS` | empty | When set (Profile D), write wiki `hdmi_timings=` instead of `hdmi_cvt` |
+| `HDMI_NATIVE_WIDTH` / `HEIGHT` | empty → same as app | Kernel mode size before rotate (400×1280 on 7.9") |
+| `HDMI_ROTATE` | empty | `90` / `180` / `270` for `video=…,rotate=` (Profile D = 90) |
+| `HDMI_CONNECTOR` | `HDMI-A-1` | KMS connector name |
 | `ENABLE_HYPERPIXEL4` | `0` | Pimoroni HyperPixel 4 DPI (Profile B — parked) |
 | `HYPERPIXEL_WIDTH` / `HEIGHT` / `ROTATE` | 800 / 480 / left | DPI geometry + landscape rotation |
 | `ENABLE_WAVESHARE_DPI` | `0` | Waveshare 3.5 DPI (Profile C — `config.waveshare35-pimidi`) |
