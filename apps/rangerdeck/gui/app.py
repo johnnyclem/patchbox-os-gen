@@ -30,8 +30,8 @@ from rangerkit.gui.widgets import (HitMap, button, chip, focus_ring, lcd, pad,
 
 from core.engine import BACKGROUND, OFF, SHOWN, STARTING
 from core.updates import (STATUS_APPLYING, STATUS_AVAILABLE, STATUS_CHECKING,
-                          STATUS_CURRENT, STATUS_ERROR, UpdateState,
-                          apply_update, start_check, update_settings)
+                          STATUS_ERROR, UpdateState, apply_update,
+                          start_check, update_settings)
 from core.version import APP_NAME, __version__
 
 log = logging.getLogger("rangerdeck.gui")
