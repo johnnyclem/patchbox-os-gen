@@ -18,6 +18,8 @@ generators; mutation changes *(params, seed)*, never notes. The headline
 test builds two engines from one project and asserts identical event
 streams over eight bars.
 
+![GenRanger PERFORM — Cruise, the chaos/density/complexity trio, six layers](docs/img/panel-1280x400-0-perform.png)
+
 ## Running it
 
 ```bash

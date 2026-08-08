@@ -1,11 +1,7 @@
 """Update channel: compare, fetch injection, GUI chip and Install path."""
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 import pygame
-import pytest
 
 from core.engine import DeckFleet
 from core.registry import AppSpec

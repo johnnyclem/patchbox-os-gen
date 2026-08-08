@@ -11,6 +11,8 @@ touch bar rig as RK-00pi and ChordRanger.
 Inspirations: Squarp Pyramid/Hermod · Oxi One · KeyStep Pro arps ·
 MIDI Solutions.
 
+![MidiRanger PERFORM — MIDI activity, scene recall, hot controls](docs/img/panel-1280x400-0-perform.png)
+
 ## Running it
 
 ```bash

@@ -448,6 +448,10 @@ Display mode is forced via `hdmi_cvt` / `hdmi_mode=87` and cmdline
 `video=HDMI-A-1:1280x400@60D` (`stage3/09-hdmi-ultrawide`). Override with
 `HDMI_WIDTH` / `HDMI_HEIGHT` / `HDMI_REFRESH`.
 
+This is also the hardware [the Ranger Suite](#the-ranger-suite) is drawn for.
+Same rig, different boot app: `./build-docker.sh -c config.rangers` boots
+RangerDeck instead of RK-00pi, and the whole family of apps ships on the card.
+
 ### Alternate stack: HyperPixel 4.0" DPI (Profile B)
 
 ```text
@@ -499,36 +503,13 @@ conflict-free TRS. On-device: `~/WAVESHARE-DPI.txt`,
 Parked / opt-in: Inky e-paper, RaspiAudio I2S — each conflicts with Pisound
 and/or the chosen UI.
 
-### Second app: ChordRanger
-
-[`apps/chordranger`](apps/chordranger/README.md) is a chord-first backing band
-for the same hardware — twelve chord pads (Chordcat), a six-section
-auto-accompaniment with fills that fire on the bar line (Yamaha QY), and a
-bass engine with its own voicing dial that is independent of the chord part
-(Orchid ORC-1). It lives in this repo rather than a submodule, and
-`stage3/13-install-chordranger` bakes it into `/opt/chordranger` with
-`chordranger.service`, `/etc/chordranger/config.toml` and a `chordranger-btn`
-bridge for The Button.
-
-ChordRanger and RK-00pi both render through SDL `kmsdrm` and there is one
-panel, so **exactly one runs at a time**. The image ships both; the unit is
-installed disabled by default and swapped on the device:
-
-```bash
-patchbox-chordranger status         # which app owns the panel
-sudo patchbox-chordranger enable    # ChordRanger, now and on next boot
-sudo patchbox-chordranger disable   # hand it back to RK-00pi
-```
-
-Build an image that boots ChordRanger instead with
-`ENABLE_CHORDRANGER_SERVICE=1` — the stage disables `rk00pi.service` for you.
-
 ### Audio / MIDI (this release)
 
 | Path | Status |
 |------|--------|
 | **Pisound** | **Primary** (¼″ + MIDI DIN, JACK) |
 | **RK-00pi** | **Primary UI** (ALSA MIDI backend, prefer Pisound) |
+| **Ranger Suite** | Shipped, one app at a time — see [The Ranger Suite](#the-ranger-suite) |
 | USB audio / USB MIDI | Optional secondary |
 | RaspiAudio I2S | Off |
 | Pimidi | Ordered / optional later if pins free |
@@ -553,8 +534,13 @@ on the unit with `patchbox-rk00pi-autohub` (read-only) and repair with
 | `ENABLE_RK00PI_COMPANION` | `1` | LAN companion routing UI + backup (`:8787`, token auth) |
 | `RK00PI_COMPANION_BIND` / `PORT` / `ADVERTISE` | `0.0.0.0` / `8787` / `1` | Companion listen + mDNS |
 | `RK00PI_HUB_PRESET` | follows `ENABLE_PIMIDI` | Starter hub: `pimidi-2x2`, else `rk008` (Pisound DIN) |
+| `RANGER_BOOT_APP` | `rk00pi` | Which kiosk app boots — any Ranger app, or `rangerdeck` for the launcher. Anything but `rk00pi` disables `rk00pi.service` |
+| `ENABLE_RANGERDECK` | `1` | Install [RangerDeck](apps/rangerdeck/README.md), the suite launcher |
 | `ENABLE_CHORDRANGER` | `1` | Install ChordRanger from `apps/chordranger` |
-| `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi |
+| `ENABLE_CHORDRANGER_SERVICE` | `0` | Boot ChordRanger instead of RK-00pi (implies `RANGER_BOOT_APP=chordranger`) |
+| `ENABLE_MIDIRANGER` / `GENRANGER` / `PHRASERANGER` | `1` | Install those [Ranger apps](#the-ranger-suite) |
+| `ENABLE_SCENERANGER` / `GROOVERANGER` / `SYNTHRANGER` | `1` | Install those Ranger apps |
+| `<APP>_WIDTH` / `<APP>_HEIGHT` | unset | Force one app's panel geometry (else it follows the display profile) |
 | `ENABLE_HDMI_ULTRAWIDE` | `1` | HDMI custom **1280×400** + USB touch (Profile A — primary) |
 | `HDMI_WIDTH` / `HEIGHT` / `REFRESH` | 1280 / 400 / 60 | HDMI panel geometry |
 | `ENABLE_HYPERPIXEL4` | `0` | Pimoroni HyperPixel 4 DPI (Profile B — parked) |
@@ -588,6 +574,185 @@ previously set in `stage1/01-sys-tweaks` (and always locked again at
 `export-image/05-finalise`) has been removed, and the Blokas/Raspberry Pi
 Foundation apt repositories now use HTTPS instead of HTTP (both endpoints
 verified to serve HTTPS; GPG-signature verification applied either way).
+
+## The Ranger Suite
+
+Seven touch-panel instruments and a launcher, all living in this repo under
+[`apps/`](apps) rather than in a submodule, all drawn for the same 1280×400
+bar, each baked into the image by its own `stage3` stage.
+
+[**RangerDeck**](apps/rangerdeck/README.md) is the front door: one tile per
+installed app, tap a tile and that app takes the panel.
+
+![RangerDeck, idle — one tile per Ranger app, POWER in the last cell](apps/rangerdeck/docs/img/deck-1280x400-0-idle.png)
+
+The tile's ✕ hands the panel back, and **closing the picture never stops the
+music** — a backgrounded app keeps its own process, clock, transport, arps,
+recording and playback running, and its tile says ▶ RUNNING until you press
+the tile's ■ to shut that rig down for real.
+
+![RangerDeck with MidiRanger and GrooveRanger running in the background](apps/rangerdeck/docs/img/deck-1280x400-1-running.png)
+
+| App | What it is | Stage | Toggle |
+|-----|------------|-------|--------|
+| [ChordRanger](apps/chordranger/README.md) | Chord pads + QY-style backing band | `13` | `ENABLE_CHORDRANGER` |
+| [MidiRanger](apps/midiranger/README.md) | MIDI routing matrix · arps · note FX | `15` | `ENABLE_MIDIRANGER` |
+| [GenRanger](apps/genranger/README.md) | Generative sequencer (Euclid/Markov/CA, Cruise) | `16` | `ENABLE_GENRANGER` |
+| [PhraseRanger](apps/phraseranger/README.md) | MIDI phrase looper + overdub + slicer | `17` | `ENABLE_PHRASERANGER` |
+| [SceneRanger](apps/sceneranger/README.md) | 12×8 clip + scene launcher | `18` | `ENABLE_SCENERANGER` |
+| [GrooveRanger](apps/grooveranger/README.md) | Sample groovebox + step sequencer + FX | `19` | `ENABLE_GROOVERANGER` |
+| [SynthRanger](apps/synthranger/README.md) | Multi-engine multitimbral poly synth | `20` | `ENABLE_SYNTHRANGER` |
+| [RangerDeck](apps/rangerdeck/README.md) | The launcher (tiles, handover, updates, POWER) | `21` | `ENABLE_RANGERDECK` |
+
+[`apps/rangerkit`](apps/rangerkit/docs/CONVENTIONS.md) is the shared library
+underneath them — theory, clock, routing, engine base, MIDI/pots/button I/O,
+the audio path, and the GUI theme and widgets. It is **vendored, not
+installed**: each app's stage rsyncs a frozen copy into `/opt/<app>/rangerkit`,
+so one app can be updated or rolled back without moving the ground under its
+siblings. `stage3/14-install-rangerkit` ships only what is genuinely global,
+the `patchbox-app` switcher below.
+
+### The panels
+
+Every screenshot here is generated from the real app, headless, by
+`python bench/render_panel.py docs/img` in each app directory — that is how
+the panels get reviewed without the hardware on the desk. Each app's README
+carries the rest of its screens.
+
+**ChordRanger** — twelve chord pads (Chordcat), a six-section
+auto-accompaniment with fills that fire on the bar line (Yamaha QY), and a
+bass engine with its own voicing dial independent of the chord part
+(Orchid ORC-1):
+
+![ChordRanger PERFORM](apps/chordranger/docs/img/panel-0-perform.png)
+
+**MidiRanger** — the suite's MIDI brain: multi-port matrix, four arps, scale
+quantizer and harmonizer, note FX, CC LFOs, eight morphable scenes:
+
+![MidiRanger PERFORM](apps/midiranger/docs/img/panel-1280x400-0-perform.png)
+
+**GenRanger** — up to six layers driven by Euclid, Markov, probability grids,
+cellular automata or constrained random, with Cruise slowly mutating the piece
+and lock regions holding what works:
+
+![GenRanger PERFORM](apps/genranger/docs/img/panel-1280x400-0-perform.png)
+
+**PhraseRanger** — eight-track phrase looper with pedal feel: quantized or free
+record, tape-style overdub decay, sixteen undos per track, reverse, stretch,
+and a slicer that maps a take onto sixteen pads in one gesture:
+
+![PhraseRanger PERFORM](apps/phraseranger/docs/img/panel-1280x400-0-perform.png)
+
+**SceneRanger** — a 12-track × 8-scene clip grid built for the bar: quantized
+launch, follow actions with probability, scene rows that launch as states:
+
+![SceneRanger PERFORM](apps/sceneranger/docs/img/panel-1280x400-0-perform.png)
+
+**GrooveRanger** — twelve velocity-layered pads with choke groups, a sixteen-step
+sequencer with probability, ratchets, trig conditions, micro-timing and
+parameter locks, eight patterns with queued switching and one-pass fills:
+
+![GrooveRanger PERFORM](apps/grooveranger/docs/img/panel-1280x400-0-perform.png)
+
+**SynthRanger** — four oscillator engines (virtual analog, 2-op FM, wavetable
+scan, phase distortion) across four parts, mod matrix fed by an on-screen XY
+pad, A ↔ B patch morph on one knob:
+
+![SynthRanger PERFORM](apps/synthranger/docs/img/panel-1280x400-0-perform.png)
+
+### Design system: the micro-rangers industrial language
+
+All eight panels above are drawn from one set of tokens in
+[`apps/rangerkit/gui/theme.py`](apps/rangerkit/gui/theme.py) and one set of
+components in [`gui/widgets.py`](apps/rangerkit/gui/widgets.py). The scheme is
+not a taste call — it is what survives the reference display, a 1280×400 HDMI
+bar with a heavy blue cast and a shallow black, on which three near-black
+surfaces all collapse into the same washed navy and a filled pad becomes
+indistinguishable from an empty one at arm's length. (ChordRanger predates
+rangerkit and keeps its own engine, but its `gui/theme.py` and `gui/widgets.py`
+are now re-export shims onto the shared ones, so it moves with the family.)
+
+ * **Separate surfaces by lightness against a light ground**, not by hue.
+   `BG` (panel face) / `BG_RAISED` (button rest) / `BG_SUNKEN` (empty well) /
+   `BG_PRESS` read apart even on a bad LCD.
+ * **Every rule is 2 px of true black, `RADIUS 0`.** A black line is the one
+   thing a bad panel still renders exactly. Shadows are a hard 2 px offset,
+   never a blur.
+ * **Numbers live in black LCD wells** (`bg_lcd`), cyan value type over a dim
+   cyan caption — the `lcd()` widget. Values are set in a monospace so digits
+   do not shift width as they count; headings, buttons and tabs are a
+   grotesque, always upper case.
+ * **Focus is HOT orange** (`#E85D04`), a 3 px ring drawn *outside* the black
+   rule. Semantics hold across every colourway: `ACCENT` is play/active,
+   `ACCENT2` is arm/record/queued, `ACCENT3` is the cool chip, `DANGER` is
+   stop/delete.
+ * **Never colour alone for press.** A pressed control drops geometry as well,
+   so the state is legible in sunlight and to a colour-blind eye. Concepts are
+   coloured *at rest* — PLAY is play-coloured whether or not it is playing —
+   so the finger aims by hue and the *fill* means latched.
+ * **Type ink is asked for, not assumed.** `ink_for(fill)` picks black or white
+   by luminance, which is what keeps a re-tuned hue or a flipped ground from
+   quietly producing unreadable labels.
+ * **Colourways are swapped whole, never patched**: `INDUSTRIAL` (default),
+   `NIGHT`, `MONO`, `DUSK`. Nothing in a GUI may capture a colour at import
+   time — `theme.apply()` rebinds the names in place, and a captured value
+   would keep the old palette forever.
+
+Geometry adapts rather than scales. On the bar, vertical space is the scarce
+resource, so the chrome turns sideways — transport rail down the left (150 px),
+tab rail down the right (112 px), and the content keeps all 400 px of height.
+Portrait and 800×480 panels get the ordinary top-transport / bottom-tabs stack
+instead. Three geometries are resolved by one `Layout` class (1280×400,
+800×480, 480×800), every drawn control is a registered hit target of at least
+44 px, and the GUI tests run all three.
+
+One consequence worth knowing before you debug a panel that paints perfectly
+and ignores every tap: capacitive USB-HID panels emit `FINGER*` events only,
+the kiosk units pin `SDL_TOUCH_MOUSE_EVENTS=0`, and every app therefore runs
+its events through a `rangerkit.gui.touch.TouchTranslator` configured *before*
+`display.init`. Without it nothing is clickable, including deck tiles.
+
+### One panel, one app
+
+Every Ranger app and RK-00pi render through SDL `kmsdrm`, and there is one
+display, so **exactly one owns the panel at a time**. The image ships them all;
+`patchbox-app` swaps them, standing every sibling down so the machine can never
+end up with two units enabled and a dark panel because they raced for the DRM
+master:
+
+```bash
+patchbox-app status                  # every installed kiosk app, and who has the panel
+sudo patchbox-app enable rangerdeck  # the launcher, now and on next boot
+sudo patchbox-app enable rk00pi      # back to the classic single app
+sudo patchbox-app disable            # stop the current app, restore the default
+patchbox-app logs midiranger         # tail that app's journal
+```
+
+(`patchbox-chordranger` still exists as a thin wrapper over it.)
+
+Pick the boot app at bake time with `RANGER_BOOT_APP` (`rk00pi` by default);
+setting it to anything else disables `rk00pi.service` for you.
+
+### Building a Ranger image
+
+[`config.rangers`](config.rangers) is the preset: Profile A hardware
+(Pi 5 + Pimidi + 1280×400 bar + USB touch) with RangerDeck at boot and all
+seven apps installed.
+
+```bash
+./build-docker.sh -c config.rangers
+```
+
+RK-00pi is still installed by that build but grows no tile — it does not speak
+the deck protocol yet, and stays one `sudo patchbox-app enable rk00pi` away.
+Two audio apps at once need JACK to share the DAC; on bare ALSA it is
+first-come-first-served and the second app runs with null audio.
+
+Once a unit is in the field, RangerDeck can update itself from a git channel
+file ([`apps/rangers-channel.json`](apps/rangers-channel.json)): when the
+remote tip moves, the deck header shows **UPDATE · TAP**, and Install runs
+`patchbox-ranger-update` (shallow clone + rsync into `/opt/*`, keeping venvs).
+See the [RangerDeck README](apps/rangerdeck/README.md#updates-git-channel).
 
 ## Docker Build
 

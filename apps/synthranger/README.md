@@ -12,6 +12,8 @@ bank. Same Pi 5 + touch bar rig as its siblings.
 
 Inspirations: microKORG · Casio CZ · DX7 · Blofeld.
 
+![SynthRanger PERFORM — keyboard, four parts, XY mod matrix, patch morph](docs/img/panel-1280x400-0-perform.png)
+
 ## The floor, documented honestly
 
 Internal render is **48 kHz float32, 256-frame blocks** (the Pisound DAC

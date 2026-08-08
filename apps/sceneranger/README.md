@@ -11,6 +11,8 @@ rig as its siblings.
 
 Inspirations: Ableton Live Session · Push · Bitwig clips · Launchpad.
 
+![SceneRanger PERFORM — the 12-track x 8-scene clip grid](docs/img/panel-1280x400-0-perform.png)
+
 ## Running it
 
 ```bash

@@ -68,20 +68,27 @@ def main(argv: list[str]) -> int:
                       connect=lambda name, timeout: _Idle())
     app = App(fleet, size=size)
 
-    shots = [("idle", ())]
+    # Shoot as we go: the fleet is mutated between states, so a shot taken
+    # after the fact would photograph the *last* state twice.
+    shot = 0
+
+    def shoot(label: str) -> None:
+        nonlocal shot
+        app._draw()
+        path = out / f"deck-{size[0]}x{size[1]}-{shot}-{label}.png"
+        pygame.image.save(app.surface, str(path))
+        print(f"wrote {path}")
+        shot += 1
+
+    shoot("idle")
     fleet.launch("midiranger")
     fleet.try_attach("midiranger")
     fleet.launch("grooveranger")
     fleet.try_attach("grooveranger")
     assert fleet.state("midiranger") == BACKGROUND
     app.message("MIDIRANGER RUNNING")
-    shots.append(("running", ("midiranger", "grooveranger")))
+    shoot("running")
 
-    for index, (label, _running) in enumerate(shots):
-        app._draw()
-        path = out / f"deck-{size[0]}x{size[1]}-{index}-{label}.png"
-        pygame.image.save(app.surface, str(path))
-        print(f"wrote {path}")
     pygame.display.quit()
     return 0
 
