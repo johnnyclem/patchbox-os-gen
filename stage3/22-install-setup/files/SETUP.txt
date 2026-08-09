@@ -1,0 +1,85 @@
+Patchbox OS — first-boot setup (Rangers / RK-00pi / MODEP)
+==========================================================
+
+After you burn the .img and the Pi comes up, setup is meant to feel like
+stock Patchbox + MODEP: one wizard, pick your hardware and default app,
+play.
+
+Quick path (SSH or serial console)
+----------------------------------
+  ssh patch@patchbox.local          # password: blokaslabs (change it)
+  sudo patchbox-setup wizard
+
+That walks:
+
+  1. Display type / size
+       hdmi-1280x400   ElecLab / generic HDMI bar (Profile A)
+       waveshare79     Waveshare 7.9″ HDMI bar
+       waveshare35     Waveshare 3.5″ DPI 640×480
+       hyperpixel4     Pimoroni HyperPixel 4 800×480
+       stock           no forced modes
+
+  2. Audio / MIDI hardware
+       pimidi          Blokas Pimidi 2×2 TRS
+       pisound         Pisound DIN / onboard
+       usb             USB MIDI only
+
+  3. Ranger tiles (which apps show on the launcher)
+       all  |  chordranger,midiranger,…
+
+  4. Default boot app
+       rangerdeck      suite launcher (micro-rangers)
+       rk00pi          single-app MIDI hub / tape / sampler
+       modep           stock Patchbox MODEP pedalboard
+       none            desktop / console only
+       (or any other installed Ranger)
+
+  5. Optional: patchbox jack config  (sound card)
+
+Same pieces as individual commands:
+
+  patchbox-setup status
+  sudo patchbox-setup display set hdmi-1280x400
+  sudo patchbox-setup midi set pimidi
+  sudo patchbox-setup rangers set chordranger,midiranger,genranger
+  sudo patchbox-setup boot set rangerdeck
+
+Stock Patchbox module menu (also works)
+---------------------------------------
+  patchbox                          # interactive
+  # modules → rangerdeck | rk00pi | modep | none
+
+  patchbox module activate rangerdeck
+  patchbox module activate rk00pi
+  patchbox module activate modep
+
+Kiosk switcher (live, no module state):
+
+  patchbox-app status
+  sudo patchbox-app enable rangerdeck
+  sudo patchbox-app enable rk00pi
+
+On the launcher (RangerDeck)
+----------------------------
+  Tap a tile → that Ranger takes the panel.
+  Top-left ✕ → back to the launcher (music keeps running).
+  Tile ■ → stop that app for real.
+  SETTINGS tile → toggle which Rangers appear.
+  POWER tile → restart / shut down.
+
+Checks
+------
+  patchbox-setup status
+  patchbox-display-status
+  patchbox-pimidi-status
+  patchbox-app status
+  sudo patchbox-soak                 # Profile A soak gates
+
+Display / HAT changes that rewrite /boot/firmware/config.txt need:
+
+  sudo reboot
+
+Docs
+----
+  ~/SOAK-PROFILE-A.md
+  Patchbox OS: https://blokas.io/patchbox-os/docs/

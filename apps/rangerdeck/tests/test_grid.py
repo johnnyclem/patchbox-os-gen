@@ -69,6 +69,50 @@ def test_every_tile_is_a_hit_target(size, tmp_path):
             rect = app.chrome.rect_for(f"app:{spec.name}")
             assert rect is not None, spec.name
             assert rect.width >= 44 and rect.height >= 44, spec.name
+        # SETTINGS + POWER trail the app tiles.
+        assert app.chrome.rect_for("settings:open") is not None
+        assert app.chrome.rect_for("power:open") is not None
+    finally:
+        pygame.display.quit()
+
+
+def test_settings_menu_toggles_and_saves(tmp_path, monkeypatch):
+    """SETTINGS sheet writes enabled-apps and rebuilds when run_dir is set."""
+    from core.selection import load_enabled
+
+    enabled = tmp_path / "enabled-apps.txt"
+    # Point discover at a fake suite so SETTINGS lists real names.
+    suite = tmp_path / "suite"
+    for name, title, tag in (
+            ("midiranger", "MidiRanger", "m"),
+            ("genranger", "GenRanger", "g"),
+            ("synthranger", "SynthRanger", "s")):
+        d = suite / name
+        d.mkdir(parents=True)
+        (d / "main.py").write_text("#\n")
+
+    import core.registry as reg
+    real_discover = reg.discover
+
+    def fake_discover(order=(), root=None, fullscreen=False, size=(1280, 400)):
+        return real_discover(order=order, root=suite, fullscreen=fullscreen,
+                             size=size)
+
+    monkeypatch.setattr("gui.app.discover", fake_discover)
+
+    app = make_app(tmp_path=tmp_path)
+    app._enabled_path = enabled
+    app._run_dir = tmp_path / "run"
+    app._run_dir.mkdir()
+    try:
+        app._open_settings()
+        assert app._settings_menu
+        # Draft starts from current fleet names that exist in suite.
+        app._settings_draft = {"midiranger", "genranger"}
+        app._save_settings()
+        assert not app._settings_menu
+        assert load_enabled(enabled) == ("midiranger", "genranger")
+        assert set(app.fleet.names()) <= {"midiranger", "genranger"}
     finally:
         pygame.display.quit()
 

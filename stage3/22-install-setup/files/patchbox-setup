@@ -1,0 +1,907 @@
+#!/bin/bash
+# patchbox-setup — first-boot / field setup for display, MIDI, rangers, boot app.
+#
+# Goal: burning this image should feel like stock Patchbox + MODEP —
+# SSH in (or use the console), run one wizard, pick hardware + default
+# environment, reboot once if the panel changed, and play.
+#
+#   sudo patchbox-setup wizard          # full walkthrough
+#   patchbox-setup status               # what is configured
+#   sudo patchbox-setup display set hdmi-1280x400
+#   sudo patchbox-setup midi set pimidi
+#   sudo patchbox-setup rangers set chordranger,midiranger,genranger
+#   sudo patchbox-setup boot set rangerdeck   # or rk00pi | modep | none
+#
+# Display changes rewrite /boot/firmware/config.txt + all kiosk config.toml
+# panel sizes and usually need a reboot. Boot-app changes take effect now.
+set -euo pipefail
+
+STATE_DIR=/var/lib/patchbox-setup
+STATE_FILE="${STATE_DIR}/state.env"
+RANGERDECK_CFG=/etc/rangerdeck/config.toml
+ENABLED_APPS_FILE=/var/lib/rangerdeck/enabled-apps.txt
+BOOT_CFG=/boot/firmware/config.txt
+BOOT_CMDLINE=/boot/firmware/cmdline.txt
+# Bookworm may still have the legacy path on older cards
+[ -f "${BOOT_CFG}" ] || BOOT_CFG=/boot/config.txt
+[ -f "${BOOT_CMDLINE}" ] || BOOT_CMDLINE=/boot/cmdline.txt
+
+KIOSK_APPS="rk00pi chordranger midiranger genranger phraseranger sceneranger grooveranger synthranger rangerdeck"
+RANGER_TILE_APPS="chordranger midiranger genranger phraseranger sceneranger grooveranger synthranger"
+
+usage() {
+	cat <<'EOF'
+usage: patchbox-setup <command> ...
+
+  status                         show display / midi / rangers / boot app
+  wizard                         interactive first-boot style setup   [root]
+
+  display list|status
+  display set <profile>          [root]  needs reboot for panel modes
+      profiles: hdmi-1280x400  waveshare79  waveshare35  hyperpixel4  stock
+
+  midi list|status
+  midi set <profile>             [root]  may need reboot for HAT overlays
+      profiles: pimidi  pisound  usb
+
+  rangers list|status
+  rangers enable <app> …         [root]  show tile(s) on RangerDeck
+  rangers disable <app> …        [root]  hide tile(s)
+  rangers set a,b,c              [root]  replace the whole tile list
+
+  boot list|status
+  boot set <app>                 [root]  default environment now + on boot
+      apps: rangerdeck  rk00pi  chordranger …  modep  none
+
+Same path as MODEP: after flash, SSH in and run  sudo patchbox-setup wizard
+(or pick rangerdeck / rk00pi from the stock  patchbox  module menu).
+EOF
+}
+
+need_root() {
+	if [ "$(id -u)" -ne 0 ]; then
+		echo "this needs root: sudo patchbox-setup $*" >&2
+		exit 1
+	fi
+}
+
+ensure_state_dir() {
+	install -d -m 755 "${STATE_DIR}"
+	install -d -m 755 /var/lib/rangerdeck 2>/dev/null || true
+}
+
+load_state() {
+	DISPLAY_PROFILE="${DISPLAY_PROFILE:-}"
+	MIDI_PROFILE="${MIDI_PROFILE:-}"
+	BOOT_APP="${BOOT_APP:-}"
+	if [ -f "${STATE_FILE}" ]; then
+		# shellcheck disable=SC1090
+		. "${STATE_FILE}" || true
+	fi
+}
+
+save_state() {
+	ensure_state_dir
+	umask 022
+	cat > "${STATE_FILE}" <<EOF
+# written by patchbox-setup — do not edit by hand unless you know why
+DISPLAY_PROFILE=${DISPLAY_PROFILE:-}
+MIDI_PROFILE=${MIDI_PROFILE:-}
+BOOT_APP=${BOOT_APP:-}
+UPDATED=$(date -Is 2>/dev/null || date)
+EOF
+}
+
+# --- helpers -----------------------------------------------------------------
+
+kiosk_config_dirs() {
+	local app
+	for app in ${KIOSK_APPS}; do
+		[ -f "/etc/${app}/config.toml" ] && echo "/etc/${app}/config.toml"
+	done
+}
+
+set_panel_size() {
+	# $1 width $2 height — every installed kiosk config.toml
+	local w="$1" h="$2" cfg
+	while IFS= read -r cfg; do
+		[ -f "${cfg}" ] || continue
+		if grep -qE '^width[[:space:]]*=' "${cfg}"; then
+			sed -i -E "s/^width[[:space:]]*=.*/width = ${w}/" "${cfg}"
+		fi
+		if grep -qE '^height[[:space:]]*=' "${cfg}"; then
+			sed -i -E "s/^height[[:space:]]*=.*/height = ${h}/" "${cfg}"
+		fi
+		echo "  panel ${w}x${h} → ${cfg}"
+	done < <(kiosk_config_dirs)
+}
+
+strip_managed_boot_blocks() {
+	# Drop blocks / lines we own so re-applying a profile is idempotent.
+	local src="$1" dst="$2"
+	local line s
+	: > "${dst}"
+	while IFS= read -r line || [ -n "${line}" ]; do
+		s="${line#"${line%%[![:space:]]*}"}"
+		case "${s}" in
+			*'--- HDMI ultrawide'*|*'--- end HDMI ultrawide'*) continue ;;
+			*'--- Waveshare 3.5 DPI'*|*'--- end Waveshare'*) continue ;;
+			*'--- HyperPixel 4'*|*'--- end HyperPixel 4'*) continue ;;
+			*'--- patchbox-setup'*|*'--- end patchbox-setup'*) continue ;;
+			hdmi_group=*|hdmi_mode=*|hdmi_cvt=*|hdmi_timings=*|hdmi_drive=*|hdmi_force_hotplug=*|hdmi_ignore_edid=*) continue ;;
+			dtoverlay=waveshare-35dpi*|dtoverlay=waveshare-touch-35dpi*|dtoverlay=vc4-kms-DPI-35inch*) continue ;;
+			dtoverlay=vc4-kms-dpi-hyperpixel4*|dtoverlay=vc4-kms-dpi-hyperpixel4sq*|dtoverlay=vc4-kms-dpi-generic*) continue ;;
+			dtoverlay=pimidi*|dtparam=i2c_arm=on|dtparam=spi=on) continue ;;
+		esac
+		printf '%s\n' "${line}" >> "${dst}"
+	done < "${src}"
+}
+
+ensure_kms() {
+	local cfg="$1"
+	grep -qE '^dtoverlay=vc4-kms-v3d' "${cfg}" || echo "dtoverlay=vc4-kms-v3d" >> "${cfg}"
+	grep -qE '^max_framebuffers=' "${cfg}" || echo "max_framebuffers=2" >> "${cfg}"
+}
+
+set_cmdline_video() {
+	# $1 token e.g. video=HDMI-A-1:1280x400M@60  or empty to strip
+	local token="${1:-}"
+	local tmp
+	tmp="$(mktemp)"
+	sed -E 's/ *video=HDMI-A-[12]:[^ ]*//g; s/ *video=DPI-1:[^ ]*//g' \
+		"${BOOT_CMDLINE}" > "${tmp}.1"
+	if [ -n "${token}" ]; then
+		if grep -q 'video=' "${tmp}.1"; then
+			# already stripped custom ones; prepend
+			sed "s/^/${token} /" "${tmp}.1" > "${tmp}.2"
+		else
+			sed "s/^/${token} /" "${tmp}.1" > "${tmp}.2"
+		fi
+		tr -s ' \t' ' ' < "${tmp}.2" | sed 's/^ //;s/ $//' | tr -d '\n' > "${tmp}"
+		echo >> "${tmp}"
+	else
+		tr -s ' \t' ' ' < "${tmp}.1" | sed 's/^ //;s/ $//' | tr -d '\n' > "${tmp}"
+		echo >> "${tmp}"
+	fi
+	cp "${tmp}" "${BOOT_CMDLINE}"
+	rm -f "${tmp}" "${tmp}.1" "${tmp}.2"
+}
+
+add_pimidi_overlay() {
+	local sel="${1:-0}" cfg="$2"
+	if ! grep -qE '^dtoverlay=pimidi' "${cfg}"; then
+		cat >> "${cfg}" <<EOF
+
+# --- patchbox-setup midi:pimidi ---
+dtparam=i2c_arm=on
+dtoverlay=pimidi,sel=${sel}
+# --- end patchbox-setup ---
+EOF
+	else
+		sed -i -E "s/^dtoverlay=pimidi.*/dtoverlay=pimidi,sel=${sel}/" "${cfg}"
+	fi
+}
+
+detect_display_profile() {
+	if [ ! -f "${BOOT_CFG}" ]; then
+		echo "unknown"
+		return
+	fi
+	if grep -qE '^dtoverlay=vc4-kms-dpi-hyperpixel4' "${BOOT_CFG}"; then
+		echo "hyperpixel4"
+	elif grep -qE '^dtoverlay=waveshare-35dpi' "${BOOT_CFG}"; then
+		echo "waveshare35"
+	elif grep -qE 'hdmi_timings=400 ' "${BOOT_CFG}" || grep -qE 'video=HDMI-A-1:400x1280' "${BOOT_CMDLINE}" 2>/dev/null; then
+		echo "waveshare79"
+	elif grep -qE 'hdmi_cvt=1280 400|video=HDMI-A-1:1280x400' "${BOOT_CFG}" "${BOOT_CMDLINE}" 2>/dev/null; then
+		echo "hdmi-1280x400"
+	else
+		echo "stock"
+	fi
+}
+
+detect_midi_profile() {
+	if [ -f "${BOOT_CFG}" ] && grep -qE '^dtoverlay=pimidi' "${BOOT_CFG}"; then
+		echo "pimidi"
+	elif [ -d /proc/asound ] && grep -qi pisound /proc/asound/cards 2>/dev/null; then
+		echo "pisound"
+	else
+		echo "usb"
+	fi
+}
+
+detect_boot_app() {
+	local app
+	for app in ${KIOSK_APPS}; do
+		if systemctl is-enabled --quiet "${app}.service" 2>/dev/null; then
+			echo "${app}"
+			return
+		fi
+	done
+	if command -v patchbox >/dev/null 2>&1; then
+		local active
+		active="$(patchbox module active 2>/dev/null || true)"
+		if [ -n "${active}" ] && [ "${active}" != "None" ]; then
+			# active may be a path
+			basename "${active%/}"
+			return
+		fi
+	fi
+	echo "none"
+}
+
+# --- display -----------------------------------------------------------------
+
+cmd_display_list() {
+	cat <<'EOF'
+profiles:
+  hdmi-1280x400   ElecLab / generic HDMI bar 1280×400 + USB touch  (Profile A)
+  waveshare79     Waveshare 7.9″ HDMI bar (native 400×1280, app 1280×400)
+  waveshare35     Waveshare 3.5″ DPI 640×480 (needs overlays on image)
+  hyperpixel4     Pimoroni HyperPixel 4 800×480 DPI (owns 40-pin — no Pimidi)
+  stock           no forced modes (generic HDMI / whatever EDID reports)
+EOF
+}
+
+cmd_display_status() {
+	local det
+	det="$(detect_display_profile)"
+	load_state
+	echo "display profile (boot):  ${det}"
+	echo "display profile (state): ${DISPLAY_PROFILE:-unset}"
+	if [ -x /usr/local/bin/patchbox-display-status ]; then
+		echo
+		/usr/local/bin/patchbox-display-status 2>/dev/null || true
+	fi
+}
+
+cmd_display_set() {
+	need_root display set
+	local profile="${1:-}"
+	case "${profile}" in
+		hdmi-1280x400|waveshare79|waveshare35|hyperpixel4|stock) ;;
+		*)
+			echo "unknown display profile: ${profile}" >&2
+			cmd_display_list
+			exit 2
+			;;
+	esac
+	[ -f "${BOOT_CFG}" ] || { echo "missing ${BOOT_CFG}" >&2; exit 1; }
+
+	local tmp
+	tmp="$(mktemp)"
+	strip_managed_boot_blocks "${BOOT_CFG}" "${tmp}"
+	ensure_kms "${tmp}"
+
+	case "${profile}" in
+		hdmi-1280x400)
+			cat >> "${tmp}" <<'EOF'
+
+# --- HDMI ultrawide (patchbox-setup hdmi-1280x400) ---
+hdmi_force_hotplug=1
+hdmi_group=2
+hdmi_mode=87
+hdmi_cvt=1280 400 60 6 0 0 0
+hdmi_drive=2
+# --- end HDMI ultrawide ---
+EOF
+			set_cmdline_video "video=HDMI-A-1:1280x400M@60D"
+			set_panel_size 1280 400
+			;;
+		waveshare79)
+			if [ -x /usr/local/sbin/patchbox-fix-waveshare79 ] 2>/dev/null; then
+				:
+			fi
+			cat >> "${tmp}" <<'EOF'
+
+# --- HDMI ultrawide (Waveshare 7.9 native 400x1280; app landscape 1280x400) ---
+hdmi_force_hotplug=1
+hdmi_ignore_edid=0xa5000080
+hdmi_group=2
+hdmi_mode=87
+hdmi_timings=400 0 70 10 60 1280 0 20 10 12 0 0 0 60 0 43000000 3
+hdmi_drive=2
+# --- end HDMI ultrawide ---
+EOF
+			set_cmdline_video "video=HDMI-A-1:400x1280M@60"
+			set_panel_size 1280 400
+			# optional software rotate note in rk00pi
+			if [ -f /etc/rk00pi/config.toml ]; then
+				if grep -qE '^rotation[[:space:]]*=' /etc/rk00pi/config.toml; then
+					sed -i -E 's/^rotation[[:space:]]*=.*/rotation = 90/' /etc/rk00pi/config.toml || true
+				fi
+			fi
+			;;
+		waveshare35)
+			if [ ! -f /boot/firmware/overlays/waveshare-35dpi.dtbo ] \
+				&& [ ! -f /boot/overlays/waveshare-35dpi.dtbo ]; then
+				echo "WARNING: waveshare-35dpi.dtbo not on this image." >&2
+				echo "  Bake with ENABLE_WAVESHARE_DPI=1 once, or copy overlays." >&2
+			fi
+			if [ -x /usr/local/sbin/patchbox-fix-waveshare-dpi ] \
+				|| [ -x /usr/local/bin/patchbox-fix-waveshare-dpi ]; then
+				cp "${tmp}" "${BOOT_CFG}"
+				rm -f "${tmp}"
+				# Prefer the dedicated fixer when present
+				FIX="$(command -v patchbox-fix-waveshare-dpi || true)"
+				if [ -n "${FIX}" ]; then
+					"${FIX}" || true
+				fi
+				set_panel_size 640 480
+				DISPLAY_PROFILE=waveshare35
+				save_state
+				echo "display → waveshare35 (reboot required)"
+				return
+			fi
+			cat >> "${tmp}" <<'EOF'
+
+# --- Waveshare 3.5 DPI (patchbox-setup) ---
+dtoverlay=waveshare-35dpi
+dtoverlay=waveshare-touch-35dpi
+# --- end Waveshare ---
+EOF
+			set_cmdline_video "video=DPI-1:640x480M@60"
+			set_panel_size 640 480
+			;;
+		hyperpixel4)
+			if [ -x /usr/local/sbin/patchbox-fix-hyperpixel4 ]; then
+				cp "${tmp}" "${BOOT_CFG}"
+				rm -f "${tmp}"
+				/usr/local/sbin/patchbox-fix-hyperpixel4 --rotate 270 || \
+					/usr/local/sbin/patchbox-fix-hyperpixel4
+				set_panel_size 800 480
+				DISPLAY_PROFILE=hyperpixel4
+				# HyperPixel owns the header — drop pimidi
+				MIDI_PROFILE=usb
+				save_state
+				echo "display → hyperpixel4 (Pimidi DT stripped; use USB MIDI)"
+				echo "reboot required: sudo reboot"
+				return
+			fi
+			cat >> "${tmp}" <<'EOF'
+
+# --- HyperPixel 4 (patchbox-setup) ---
+dtoverlay=vc4-kms-dpi-hyperpixel4,rotate=270
+# --- end HyperPixel 4 ---
+EOF
+			set_cmdline_video ""
+			set_panel_size 800 480
+			;;
+		stock)
+			set_cmdline_video ""
+			# leave generic geometry; apps keep last size unless we set 1280x720
+			set_panel_size 1280 720
+			;;
+	esac
+
+	cp "${tmp}" "${BOOT_CFG}"
+	rm -f "${tmp}"
+	DISPLAY_PROFILE="${profile}"
+	save_state
+	echo "display → ${profile}"
+	echo "reboot required for panel modes: sudo reboot"
+}
+
+# --- midi --------------------------------------------------------------------
+
+cmd_midi_list() {
+	cat <<'EOF'
+profiles:
+  pimidi    Blokas Pimidi 2×2 TRS (dtoverlay=pimidi) + hub preset pimidi-2x2
+  pisound   Pisound DIN / onboard (strip pimidi DT; hub preset rk008)
+  usb       USB MIDI only (strip pimidi DT; autohub picks devices)
+EOF
+}
+
+cmd_midi_status() {
+	load_state
+	echo "midi profile (detect): $(detect_midi_profile)"
+	echo "midi profile (state):  ${MIDI_PROFILE:-unset}"
+	if [ -x /usr/local/bin/patchbox-pimidi-status ]; then
+		echo
+		/usr/local/bin/patchbox-pimidi-status 2>/dev/null | head -40 || true
+	fi
+	if [ -x /usr/local/sbin/patchbox-rk00pi-autohub ]; then
+		echo
+		/usr/local/sbin/patchbox-rk00pi-autohub 2>/dev/null | head -30 || true
+	fi
+	echo
+	echo "ALSA cards:"; cat /proc/asound/cards 2>/dev/null || echo "  (none)"
+	echo "MIDI clients:"; amidi -l 2>/dev/null || aconnect -l 2>/dev/null | head -20 || true
+}
+
+set_rk00pi_hub_preset() {
+	local preset="$1"
+	local cfg=/etc/rk00pi/config.toml
+	[ -f "${cfg}" ] || return 0
+	if grep -qE '^hub_preset[[:space:]]*=' "${cfg}"; then
+		sed -i -E "s/^hub_preset[[:space:]]*=.*/hub_preset = \"${preset}\"/" "${cfg}"
+	elif grep -qE '^\[midi\]' "${cfg}"; then
+		# insert after [midi]
+		sed -i "/^\[midi\]/a hub_preset = \"${preset}\"" "${cfg}" 2>/dev/null || true
+	fi
+	echo "  rk00pi hub_preset → ${preset}"
+}
+
+cmd_midi_set() {
+	need_root midi set
+	local profile="${1:-}"
+	case "${profile}" in
+		pimidi|pisound|usb) ;;
+		*) cmd_midi_list; exit 2 ;;
+	esac
+	[ -f "${BOOT_CFG}" ] || { echo "missing ${BOOT_CFG}" >&2; exit 1; }
+
+	local tmp
+	tmp="$(mktemp)"
+	# strip only pimidi lines, keep display blocks
+	while IFS= read -r line || [ -n "${line}" ]; do
+		s="${line#"${line%%[![:space:]]*}"}"
+		case "${s}" in
+			dtoverlay=pimidi*|*'--- patchbox-setup midi'*|*'--- end patchbox-setup ---'*) continue ;;
+		esac
+		# drop orphan dtparam=i2c_arm we previously added alone? keep user ones
+		printf '%s\n' "${line}"
+	done < "${BOOT_CFG}" > "${tmp}"
+
+	case "${profile}" in
+		pimidi)
+			add_pimidi_overlay "${PIMIDI_SEL:-0}" "${tmp}"
+			set_rk00pi_hub_preset "pimidi-2x2"
+			# clear autohub disable if present
+			rm -f /etc/rk00pi/autohub.disabled 2>/dev/null || true
+			;;
+		pisound)
+			set_rk00pi_hub_preset "rk008"
+			rm -f /etc/rk00pi/autohub.disabled 2>/dev/null || true
+			;;
+		usb)
+			set_rk00pi_hub_preset "auto"
+			rm -f /etc/rk00pi/autohub.disabled 2>/dev/null || true
+			;;
+	esac
+
+	cp "${tmp}" "${BOOT_CFG}"
+	rm -f "${tmp}"
+	MIDI_PROFILE="${profile}"
+	save_state
+	echo "midi → ${profile}"
+	if [ "${profile}" = pimidi ]; then
+		echo "reboot required for dtoverlay=pimidi: sudo reboot"
+	else
+		echo "if a pimidi overlay was active, reboot to unload it: sudo reboot"
+		if systemctl is-active --quiet rk00pi.service 2>/dev/null; then
+			systemctl restart rk00pi.service 2>/dev/null || true
+		fi
+	fi
+}
+
+# --- rangers -----------------------------------------------------------------
+
+default_ranger_list() {
+	# Prefer config.toml [deck] apps, else full suite.
+	if [ -f "${RANGERDECK_CFG}" ]; then
+		# crude extract of apps = ["a", "b"]
+		python3 - <<'PY' 2>/dev/null && return
+import re, pathlib
+p = pathlib.Path("/etc/rangerdeck/config.toml")
+text = p.read_text()
+# find apps = [ ... ] possibly multi-line
+m = re.search(r'(?m)^\s*apps\s*=\s*\[(.*?)\]', text, re.S)
+if not m:
+    raise SystemExit(1)
+body = m.group(1)
+names = re.findall(r'["\']([a-z0-9_]+)["\']', body)
+print(" ".join(names) if names else "")
+raise SystemExit(0 if names else 1)
+PY
+	fi
+	echo "${RANGER_TILE_APPS}"
+}
+
+read_enabled_rangers() {
+	if [ -f "${ENABLED_APPS_FILE}" ]; then
+		tr ',\n' '  ' < "${ENABLED_APPS_FILE}" | xargs
+		return
+	fi
+	default_ranger_list
+}
+
+write_enabled_rangers() {
+	# "$@" = app names
+	ensure_state_dir
+	local out="" a
+	for a in "$@"; do
+		case " ${RANGER_TILE_APPS} " in
+			*" ${a} "*) out="${out}${out:+ }${a}" ;;
+			*) echo "warning: unknown ranger '${a}' — skipped" >&2 ;;
+		esac
+	done
+	# also write config.toml apps = [...] so a stock deck without the
+	# enabled-apps overlay still sees the same list
+	if [ -f "${RANGERDECK_CFG}" ]; then
+		python3 - "$RANGERDECK_CFG" ${out} <<'PY' || true
+import sys, re
+path = sys.argv[1]
+apps = sys.argv[2:]
+text = open(path).read()
+body = ",\n        ".join(f'"{a}"' for a in apps)
+replacement = "apps = [" + (", ".join(f'"{a}"' for a in apps) if len(apps) <= 4
+    else "\n        " + body + "\n       ") + "]"
+new, n = re.subn(
+    r'(?m)^\s*apps\s*=\s*\[.*?\]',
+    replacement,
+    text,
+    count=1,
+    flags=re.S,
+)
+if n:
+    open(path, "w").write(new)
+else:
+    # append under [deck] if present
+    if "[deck]" in text:
+        text = text.replace("[deck]", "[deck]\n" + replacement, 1)
+        open(path, "w").write(text)
+print("wrote", path, "apps =", apps)
+PY
+	fi
+	printf '%s\n' ${out} | tr ' ' '\n' | sed '/^$/d' > "${ENABLED_APPS_FILE}"
+	echo "rangers enabled: ${out:-<none>}"
+	if systemctl is-active --quiet rangerdeck.service 2>/dev/null; then
+		echo "restarting rangerdeck to refresh tiles…"
+		systemctl restart rangerdeck.service || true
+	fi
+}
+
+cmd_rangers_list() {
+	echo "tileable rangers (installed under /opt):"
+	local a
+	for a in ${RANGER_TILE_APPS}; do
+		if [ -d "/opt/${a}" ]; then
+			printf '  %-14s installed\n' "${a}"
+		else
+			printf '  %-14s (not on image)\n' "${a}"
+		fi
+	done
+	echo
+	echo "currently shown: $(read_enabled_rangers)"
+}
+
+cmd_rangers_status() {
+	cmd_rangers_list
+}
+
+cmd_rangers_enable() {
+	need_root rangers enable
+	local current new a
+	# shellcheck disable=SC2207
+	current=($(read_enabled_rangers))
+	new=("${current[@]}")
+	for a in "$@"; do
+		case " ${new[*]} " in
+			*" ${a} "*) ;;
+			*) new+=("${a}") ;;
+		esac
+	done
+	write_enabled_rangers "${new[@]}"
+}
+
+cmd_rangers_disable() {
+	need_root rangers disable
+	local current keep a drop
+	# shellcheck disable=SC2207
+	current=($(read_enabled_rangers))
+	drop=" $* "
+	keep=()
+	for a in "${current[@]}"; do
+		case "${drop}" in
+			*" ${a} "*) ;;
+			*) keep+=("${a}") ;;
+		esac
+	done
+	write_enabled_rangers "${keep[@]}"
+}
+
+cmd_rangers_set() {
+	need_root rangers set
+	local raw="${1:-}"
+	if [ -z "${raw}" ]; then
+		echo "usage: patchbox-setup rangers set chordranger,midiranger,…" >&2
+		exit 2
+	fi
+	# shellcheck disable=SC2206
+	local apps=(${raw//,/ })
+	write_enabled_rangers "${apps[@]}"
+}
+
+# --- boot app ----------------------------------------------------------------
+
+cmd_boot_list() {
+	echo "boot environments:"
+	local a
+	for a in ${KIOSK_APPS}; do
+		if systemctl cat "${a}.service" >/dev/null 2>&1; then
+			printf '  %-14s kiosk (patchbox-app / module)\n' "${a}"
+		fi
+	done
+	echo "  modep          Patchbox MODEP module (pedalboard)"
+	echo "  none           no kiosk — desktop / console only"
+}
+
+cmd_boot_status() {
+	load_state
+	echo "boot app (enabled unit): $(detect_boot_app)"
+	echo "boot app (state):        ${BOOT_APP:-unset}"
+	if [ -x /usr/local/bin/patchbox-app ]; then
+		echo
+		/usr/local/bin/patchbox-app status 2>/dev/null || true
+	fi
+}
+
+activate_module_if_present() {
+	local name="$1"
+	if [ -d "/usr/local/patchbox-modules/${name}" ] && command -v patchbox >/dev/null 2>&1; then
+		# Mark installed + activate via module manager when possible
+		patchbox module activate "${name}" --no-autolaunch 2>/dev/null || true
+		# launch scripts are what actually enable the unit
+		if [ -x "/usr/local/patchbox-modules/${name}/launch.sh" ]; then
+			sh "/usr/local/patchbox-modules/${name}/launch.sh"
+			return 0
+		fi
+	fi
+	return 1
+}
+
+cmd_boot_set() {
+	need_root boot set
+	local app="${1:-}"
+	case "${app}" in
+		"" ) cmd_boot_list; exit 2 ;;
+		none)
+			if [ -x /usr/local/bin/patchbox-app ]; then
+				# stand down all kiosks without re-enabling default
+				local a
+				for a in ${KIOSK_APPS}; do
+					systemctl stop "${a}.service" 2>/dev/null || true
+					systemctl disable "${a}.service" 2>/dev/null || true
+				done
+			fi
+			if command -v patchbox >/dev/null 2>&1; then
+				patchbox module deactivate 2>/dev/null || true
+			fi
+			BOOT_APP=none
+			save_state
+			echo "boot → none (no kiosk app)"
+			return
+			;;
+		modep)
+			# Defer to Patchbox module manager
+			if command -v patchbox >/dev/null 2>&1; then
+				local a
+				for a in ${KIOSK_APPS}; do
+					systemctl stop "${a}.service" 2>/dev/null || true
+					systemctl disable "${a}.service" 2>/dev/null || true
+				done
+				patchbox module activate modep 2>/dev/null \
+					|| patchbox module activate modep --autoinstall 2>/dev/null \
+					|| {
+						echo "MODEP module not available. Install with:" >&2
+						echo "  patchbox module install <modep-path-or-url>" >&2
+						echo "  or: sudo apt-get install -y modep" >&2
+						exit 1
+					}
+			else
+				echo "patchbox CLI missing — cannot activate MODEP" >&2
+				exit 1
+			fi
+			BOOT_APP=modep
+			save_state
+			echo "boot → modep"
+			return
+			;;
+	esac
+
+	# kiosk family
+	case " ${KIOSK_APPS} " in
+		*" ${app} "*) ;;
+		*)
+			echo "unknown boot app: ${app}" >&2
+			cmd_boot_list
+			exit 2
+			;;
+	esac
+	if ! systemctl cat "${app}.service" >/dev/null 2>&1; then
+		echo "${app} is not installed on this image" >&2
+		exit 1
+	fi
+
+	# Prefer module path when we ship one (registers active_module for wizard)
+	if [ "${app}" = rangerdeck ] || [ "${app}" = rk00pi ]; then
+		if activate_module_if_present "${app}"; then
+			BOOT_APP="${app}"
+			save_state
+			echo "boot → ${app} (via patchbox module)"
+			return
+		fi
+	fi
+
+	if [ -x /usr/local/bin/patchbox-app ]; then
+		/usr/local/bin/patchbox-app enable "${app}"
+	else
+		systemctl enable "${app}.service"
+		systemctl restart "${app}.service"
+	fi
+	BOOT_APP="${app}"
+	save_state
+	echo "boot → ${app}"
+}
+
+# --- status / wizard ---------------------------------------------------------
+
+cmd_status() {
+	load_state
+	echo "=== patchbox-setup ==="
+	echo "date: $(date -Is 2>/dev/null || date)"
+	echo
+	echo "display:  $(detect_display_profile)  (state: ${DISPLAY_PROFILE:-unset})"
+	echo "midi:     $(detect_midi_profile)  (state: ${MIDI_PROFILE:-unset})"
+	echo "boot app: $(detect_boot_app)  (state: ${BOOT_APP:-unset})"
+	echo "rangers:  $(read_enabled_rangers)"
+	echo
+	if [ -x /usr/local/bin/patchbox-app ]; then
+		/usr/local/bin/patchbox-app status 2>/dev/null || true
+	fi
+	echo
+	echo "Re-run setup:  sudo patchbox-setup wizard"
+	echo "Docs:          ~/SETUP.txt"
+}
+
+prompt() {
+	# $1 prompt  $2 default
+	local p="$1" d="${2:-}" ans
+	if [ -n "${d}" ]; then
+		read -r -p "${p} [${d}]: " ans || true
+		echo "${ans:-$d}"
+	else
+		read -r -p "${p}: " ans || true
+		echo "${ans}"
+	fi
+}
+
+cmd_wizard() {
+	need_root wizard
+	load_state
+	echo
+	echo "=============================================="
+	echo " Patchbox setup — rangers / RK-00pi / MODEP"
+	echo "=============================================="
+	echo
+	echo "This walks display, MIDI hardware, which Rangers show on the"
+	echo "launcher, and which app boots — same idea as the stock"
+	echo "patchbox wizard picking MODEP."
+	echo
+
+	# --- display ---
+	echo "1) Display"
+	cmd_display_list
+	local det_d
+	det_d="$(detect_display_profile)"
+	local dchoice
+	dchoice="$(prompt "display profile" "${DISPLAY_PROFILE:-$det_d}")"
+	case "${dchoice}" in
+		hdmi-1280x400|waveshare79|waveshare35|hyperpixel4|stock)
+			cmd_display_set "${dchoice}" || true
+			;;
+		*) echo "keeping current display (${det_d})" ;;
+	esac
+	echo
+
+	# --- midi ---
+	echo "2) Audio / MIDI hardware"
+	cmd_midi_list
+	local det_m
+	det_m="$(detect_midi_profile)"
+	local mchoice
+	mchoice="$(prompt "midi profile" "${MIDI_PROFILE:-$det_m}")"
+	case "${mchoice}" in
+		pimidi|pisound|usb) cmd_midi_set "${mchoice}" || true ;;
+		*) echo "keeping current midi (${det_m})" ;;
+	esac
+	echo
+
+	# --- rangers ---
+	echo "3) Ranger launcher tiles"
+	echo "   Installed: ${RANGER_TILE_APPS}"
+	echo "   Current:   $(read_enabled_rangers)"
+	echo "   Enter a comma list, 'all', or press enter to keep."
+	local rchoice
+	rchoice="$(prompt "rangers" "all")"
+	case "${rchoice}" in
+		""|keep) ;;
+		all|ALL) write_enabled_rangers ${RANGER_TILE_APPS} ;;
+		*) cmd_rangers_set "${rchoice}" ;;
+	esac
+	echo
+
+	# --- boot ---
+	echo "4) Default boot app"
+	cmd_boot_list
+	local det_b
+	det_b="$(detect_boot_app)"
+	local bchoice
+	bchoice="$(prompt "boot app (rangerdeck|rk00pi|modep|none|…)" \
+		"${BOOT_APP:-$det_b}")"
+	if [ -n "${bchoice}" ]; then
+		cmd_boot_set "${bchoice}" || true
+	fi
+	echo
+
+	# --- JACK reminder (stock wizard also does this) ---
+	echo "5) Sound card (JACK)"
+	echo "   Stock Patchbox configures JACK via:  patchbox jack config"
+	echo "   Pisound is the usual HAT; USB interfaces also work."
+	if command -v patchbox >/dev/null 2>&1; then
+		local j
+		j="$(prompt "run patchbox jack config now? (y/N)" "n")"
+		case "${j}" in
+			y|Y|yes|YES) patchbox jack config || true ;;
+		esac
+	fi
+	echo
+	echo "=============================================="
+	cmd_status
+	echo
+	echo "If you changed display or pimidi overlays:  sudo reboot"
+	echo "Otherwise the boot app should already be running."
+	echo "=============================================="
+	touch "${STATE_DIR}/wizard-done"
+}
+
+# --- main --------------------------------------------------------------------
+
+cmd="${1:-status}"
+shift || true
+case "${cmd}" in
+	status) cmd_status ;;
+	wizard) cmd_wizard ;;
+	display)
+		sub="${1:-status}"; shift || true
+		case "${sub}" in
+			list) cmd_display_list ;;
+			status) cmd_display_status ;;
+			set) cmd_display_set "${1:-}" ;;
+			*) usage; exit 2 ;;
+		esac
+		;;
+	midi)
+		sub="${1:-status}"; shift || true
+		case "${sub}" in
+			list) cmd_midi_list ;;
+			status) cmd_midi_status ;;
+			set) cmd_midi_set "${1:-}" ;;
+			*) usage; exit 2 ;;
+		esac
+		;;
+	rangers)
+		sub="${1:-status}"; shift || true
+		case "${sub}" in
+			list) cmd_rangers_list ;;
+			status) cmd_rangers_status ;;
+			enable) cmd_rangers_enable "$@" ;;
+			disable) cmd_rangers_disable "$@" ;;
+			set) cmd_rangers_set "${1:-}" ;;
+			*) usage; exit 2 ;;
+		esac
+		;;
+	boot)
+		sub="${1:-status}"; shift || true
+		case "${sub}" in
+			list) cmd_boot_list ;;
+			status) cmd_boot_status ;;
+			set) cmd_boot_set "${1:-}" ;;
+			*) usage; exit 2 ;;
+		esac
+		;;
+	-h|--help|help) usage ;;
+	*) usage; exit 2 ;;
+esac

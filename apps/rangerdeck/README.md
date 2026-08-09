@@ -109,8 +109,27 @@ python bench/render_panel.py docs/img         # grid screenshots
 
 Installed by `stage3/21-install-rangerdeck` like every sibling
 (`/opt/rangerdeck`, `/etc/rangerdeck/config.toml`, `rangerdeck.service`).
-Boot it with `RANGER_BOOT_APP=rangerdeck` at bake time (see
-`config.rangers`) or `sudo patchbox-app enable rangerdeck` on the device.
-Guests run as the deck's user and share writable data dirs through the
-`ranger` group. RK-00pi is not a tile (it does not speak the deck protocol
-yet); it remains one `patchbox-app enable rk00pi` away.
+
+**First boot (like MODEP):**
+
+```bash
+sudo patchbox-setup wizard
+# display · MIDI · which tiles · boot app (rangerdeck | rk00pi | modep | …)
+
+# or the stock Patchbox module menu:
+patchbox module activate rangerdeck
+```
+
+Bake-time: `RANGER_BOOT_APP=rangerdeck` (see `config.rangers`). Live:
+`sudo patchbox-app enable rangerdeck`. Guests run as the deck's user and
+share writable data dirs through the `ranger` group.
+
+**Toggle tiles:** SETTINGS on the grid, or:
+
+```bash
+sudo patchbox-setup rangers set chordranger,midiranger,genranger
+# → /var/lib/rangerdeck/enabled-apps.txt
+```
+
+RK-00pi is not a tile (it does not speak the deck protocol yet); it remains
+one `patchbox-app enable rk00pi` / `patchbox module activate rk00pi` away.

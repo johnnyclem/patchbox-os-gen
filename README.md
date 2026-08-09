@@ -626,8 +626,19 @@ Seven touch-panel instruments and a launcher, all living in this repo under
 [`apps/`](apps) rather than in a submodule, all drawn for the same 1280×400
 bar, each baked into the image by its own `stage3` stage.
 
+**After flash — same ease as MODEP:**
+
+```bash
+ssh patch@patchbox.local
+sudo patchbox-setup wizard          # display · MIDI · tiles · boot app
+# or:  patchbox module activate rangerdeck | rk00pi | modep
+```
+
+See `~/SETUP.txt` on the image and `stage3/22-install-setup`.
+
 [**RangerDeck**](apps/rangerdeck/README.md) is the front door: one tile per
-installed app, tap a tile and that app takes the panel.
+installed app, tap a tile and that app takes the panel. **SETTINGS** toggles
+which Rangers appear (also `patchbox-setup rangers …`).
 
 ![RangerDeck, idle — one tile per Ranger app, POWER in the last cell](apps/rangerdeck/docs/img/deck-1280x400-0-idle.png)
 
@@ -771,12 +782,18 @@ sudo patchbox-app enable rangerdeck  # the launcher, now and on next boot
 sudo patchbox-app enable rk00pi      # back to the classic single app
 sudo patchbox-app disable            # stop the current app, restore the default
 patchbox-app logs midiranger         # tail that app's journal
+
+# Same idea as MODEP — Patchbox modules + setup wizard:
+sudo patchbox-setup boot set rangerdeck
+patchbox module activate rk00pi
+sudo patchbox-setup wizard           # display · MIDI · tiles · boot app
 ```
 
 (`patchbox-chordranger` still exists as a thin wrapper over it.)
 
 Pick the boot app at bake time with `RANGER_BOOT_APP` (`rk00pi` by default);
-setting it to anything else disables `rk00pi.service` for you.
+setting it to anything else disables `rk00pi.service` for you. On a burned
+image, change it anytime with `patchbox-setup boot set …` without rebuilding.
 
 ### Building a Ranger image
 

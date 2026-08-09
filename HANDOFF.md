@@ -17,6 +17,32 @@ engine** — clock, transport, arps, recording and playback keep running
 while the app is backgrounded; the tile's ■ actually stops a rig. See
 [RangerDeck](#rangerdeck--the-suite-launcher-2026-08-05) below.
 
+**New (2026-08-08): first-boot setup like MODEP.** After burning the image:
+
+```bash
+ssh patch@patchbox.local
+sudo patchbox-setup wizard
+```
+
+Walks **display type/size**, **audio/MIDI hardware**, **which Rangers
+appear on the launcher**, and **default boot app**
+(`rangerdeck` | `rk00pi` | `modep` | `none` | any kiosk). Same pieces
+individually: `patchbox-setup display|midi|rangers|boot …`.
+
+Stock Patchbox modules are also shipped under
+`/usr/local/patchbox-modules/{rangerdeck,rk00pi}` so the familiar path
+works too:
+
+```bash
+patchbox module activate rangerdeck
+patchbox module activate rk00pi
+patchbox module activate modep
+```
+
+On the launcher: **SETTINGS** toggles tiles (writes
+`/var/lib/rangerdeck/enabled-apps.txt`). Stage: `stage3/22-install-setup`.
+Docs on image: `~/SETUP.txt`.
+
 **On-device soak:** [`SOAK-PROFILE-A.md`](SOAK-PROFILE-A.md) · on image as
 `~/SOAK-PROFILE-A.md` and `sudo patchbox-soak`.
 

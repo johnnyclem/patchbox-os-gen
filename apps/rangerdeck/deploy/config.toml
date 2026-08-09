@@ -32,6 +32,8 @@ enabled = false
 run_dir = "/run/rangerdeck"
 # Tile order. An app in this list but not on the machine simply grows no
 # tile, so the whole suite can stay named on every build.
+# On the unit, /var/lib/rangerdeck/enabled-apps.txt (SETTINGS tile or
+# `patchbox-setup rangers …`) overrides this list without rewriting /etc.
 apps = ["chordranger", "midiranger", "genranger", "phraseranger",
         "sceneranger", "grooveranger", "synthranger"]
 

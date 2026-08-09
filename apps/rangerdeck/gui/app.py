@@ -20,6 +20,7 @@ from __future__ import annotations
 import logging
 import subprocess
 import time
+from pathlib import Path
 from typing import Callable
 
 import pygame
@@ -28,7 +29,9 @@ from rangerkit.gui import theme, touch
 from rangerkit.gui.widgets import (HitMap, button, chip, focus_ring, lcd, pad,
                                    panel, rule, text, toast)
 
-from core.engine import BACKGROUND, OFF, SHOWN, STARTING
+from core.engine import BACKGROUND, OFF, SHOWN, STARTING, DeckFleet
+from core.registry import KNOWN_APPS, discover
+from core.selection import DEFAULT_ENABLED_PATH, resolve_order, save_enabled
 from core.updates import (STATUS_APPLYING, STATUS_AVAILABLE, STATUS_CHECKING,
                           STATUS_ERROR, UpdateState, apply_update,
                           start_check, update_settings)
@@ -89,7 +92,10 @@ class App:
                  power_runner: Callable[[str], tuple[bool, str]] | None = None,
                  update_state: UpdateState | None = None,
                  update_apply: Callable[[], tuple[bool, str]] | None = None,
-                 start_update_check: bool = True) -> None:
+                 start_update_check: bool = True,
+                 run_dir=None,
+                 fullscreen_guests: bool | None = None,
+                 enabled_path=None) -> None:
         self.fleet = fleet
         self.size = size
         self.fullscreen = fullscreen
@@ -99,10 +105,17 @@ class App:
         self._message_until = 0
         self._power_menu = False
         self._update_menu = False
+        self._settings_menu = False
+        # Draft set of enabled app names while SETTINGS is open.
+        self._settings_draft: set[str] = set()
         self._power_runner = power_runner or default_power_runner
         self._update_apply = update_apply
         self.updates = update_state or UpdateState()
         self._update_settings = update_settings(config)
+        self._run_dir = run_dir
+        self._fullscreen_guests = (fullscreen if fullscreen_guests is None
+                                   else fullscreen_guests)
+        self._enabled_path = enabled_path or DEFAULT_ENABLED_PATH
         self.chrome = HitMap()
         # Capacitive HID panels emit FINGER* only; the unit pins SDL's mouse
         # synthesis off. Own the translation so a tap can launch a tile.
@@ -172,6 +185,9 @@ class App:
                 if self._update_menu:
                     self._update_menu = False
                     continue
+                if self._settings_menu:
+                    self._settings_menu = False
+                    continue
                 self.running = False
                 return
             if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
@@ -181,6 +197,7 @@ class App:
                 if key == "update:open":
                     self._update_menu = True
                     self._power_menu = False
+                    self._settings_menu = False
                     continue
                 if key == "update:later" or key == "update:backdrop":
                     self._update_menu = False
@@ -191,6 +208,7 @@ class App:
                 if key == "power:open":
                     self._power_menu = True
                     self._update_menu = False
+                    self._settings_menu = False
                     continue
                 if key == "power:cancel" or key == "power:backdrop":
                     self._power_menu = False
@@ -201,9 +219,25 @@ class App:
                 if key == "power:shutdown":
                     self._power("shutdown")
                     continue
+                if key == "settings:open":
+                    self._open_settings()
+                    continue
+                if key == "settings:cancel" or key == "settings:backdrop":
+                    self._settings_menu = False
+                    continue
+                if key == "settings:save":
+                    self._save_settings()
+                    continue
+                if key.startswith("settings:toggle:"):
+                    name = key.split(":", 2)[2]
+                    if name in self._settings_draft:
+                        self._settings_draft.discard(name)
+                    else:
+                        self._settings_draft.add(name)
+                    continue
                 # App tiles are inert while a confirm sheet is up — a fat
                 # finger past the sheet edge must not launch something.
-                if self._power_menu or self._update_menu:
+                if self._power_menu or self._update_menu or self._settings_menu:
                     continue
                 kind, _, name = key.partition(":")
                 if kind == "app":
@@ -307,6 +341,8 @@ class App:
             self._draw_update_menu()
         if self._power_menu:
             self._draw_power_menu()
+        if self._settings_menu:
+            self._draw_settings_menu()
         self._draw_message()
 
     def _content_area(self) -> pygame.Rect:
@@ -388,11 +424,13 @@ class App:
         return cells
 
     def _draw_grid(self) -> None:
+        # +2: SETTINGS and POWER trail the app tiles.
         names = self.fleet.names()
-        cells = self._grid_cells(len(names) + 1)
+        cells = self._grid_cells(len(names) + 2)
         for index, name in enumerate(names):
             self._draw_tile(index, name, cells[index])
-        self._draw_power_tile(cells[len(names)])
+        self._draw_settings_tile(cells[len(names)])
+        self._draw_power_tile(cells[len(names) + 1])
 
     def _pad_state(self, state: str) -> str:
         return {
@@ -432,6 +470,19 @@ class App:
             button(self.surface, self.chrome, f"stop:{name}", stop, "X", 14,
                    kind="dang")
 
+    def _draw_settings_tile(self, cell: pygame.Rect) -> None:
+        """Toggle which Rangers appear — same path as patchbox-setup rangers."""
+        face = theme.blend(theme.BG_RAISED, theme.ACCENT, 0.28)
+        panel(self.surface, cell, face, shadow=False)
+        ink = theme.ink_for(face)
+        text(self.surface, "SETTINGS",
+             pygame.Rect(cell.x + 8, cell.y + 20, cell.width - 16, 24),
+             16, ink, bold=True, display=True, align="left")
+        text(self.surface, "SHOW / HIDE RANGERS",
+             pygame.Rect(cell.x + 8, cell.y + 48, cell.width - 16, 16),
+             11, theme.blend(ink, face, 0.35), display=True, align="left")
+        self.chrome.add("settings:open", cell)
+
     def _draw_power_tile(self, cell: pygame.Rect) -> None:
         """DANG home pad — destructive actions live here, never on app tiles."""
         face = theme.blend(theme.BG_RAISED, theme.DANGER, 0.40)
@@ -451,6 +502,118 @@ class App:
         pygame.draw.circle(self.surface, ink, (cx, cy + 4), 10, 2)
         pygame.draw.line(self.surface, ink, (cx, cy - 8), (cx, cy + 2), 2)
         self.chrome.add("power:open", cell)
+
+    def _open_settings(self) -> None:
+        """Open the tile picker with the current effective selection."""
+        from core.config import deck_settings
+        config_apps = ()
+        if self.config is not None:
+            config_apps = deck_settings(self.config).apps
+        order = resolve_order(config_apps, path=self._enabled_path)
+        # Only offer apps that are installed beside the deck.
+        installed = {s.name for s in discover(order=(), size=self.size)}
+        self._settings_draft = {n for n in order if n in installed}
+        # If nothing enabled yet, default to everything installed.
+        if not self._settings_draft and installed:
+            self._settings_draft = set(installed)
+        self._settings_menu = True
+        self._power_menu = False
+        self._update_menu = False
+
+    def _save_settings(self) -> None:
+        """Persist tile list and rebuild the fleet (stop removed guests)."""
+        from core.config import deck_settings
+        # Preserve suite order, only filter membership.
+        wanted = [name for name, _, _ in KNOWN_APPS
+                  if name in self._settings_draft]
+        cfg_path = None
+        if self.config is not None and getattr(self.config, "path", None):
+            cfg_path = self.config.path
+        # Common appliance path when config object has no path attr.
+        etc = Path("/etc/rangerdeck/config.toml")
+        if cfg_path is None and etc.is_file():
+            cfg_path = etc
+        try:
+            saved = save_enabled(wanted, path=self._enabled_path,
+                                 config_toml=cfg_path)
+        except OSError as exc:
+            log.warning("save enabled apps failed: %s", exc)
+            self.message("SAVE FAILED — CHECK PERMISSIONS")
+            self._settings_menu = False
+            return
+        self._settings_menu = False
+        if self._run_dir is None:
+            # Dev/tests without a run_dir: just update labels on next restart.
+            self.message(f"SAVED {len(saved)} TILE(S) — RESTART DECK")
+            return
+        # Stop guests that leave the grid so they don't keep running headless
+        # with no tile to reclaim them.
+        for name in list(self.fleet.names()):
+            if name not in saved and self.fleet.state(name) != OFF:
+                self.fleet.stop(name)
+        specs = discover(order=saved, fullscreen=self._fullscreen_guests,
+                         size=self.size)
+        # Keep still-running guests: rebuild fleet but re-attach processes.
+        old = self.fleet
+        new_fleet = DeckFleet(specs, self._run_dir)
+        for name, guest in old.guests.items():
+            if name in new_fleet.guests and guest.state != OFF:
+                new_fleet.guests[name] = guest
+        # Anything not transferred is no longer on the grid — already stopped.
+        self.fleet = new_fleet
+        self.message(f"{len(saved)} RANGER(S) ON GRID")
+
+    def _draw_settings_menu(self) -> None:
+        """Modal checklist: toggle each installed Ranger, Save / Cancel."""
+        backdrop = pygame.Rect(0, 0, self.size[0], self.size[1])
+        veil = pygame.Surface(self.size, pygame.SRCALPHA)
+        veil.fill((*theme.BG_LCD, 170))
+        self.surface.blit(veil, (0, 0))
+        self.chrome.add("settings:backdrop", backdrop)
+
+        installed = discover(order=(), size=self.size)
+        rows = list(installed)
+        pad, gap = 12, 6
+        row_h = max(theme.TOUCH_MIN, 40)
+        btn_h = max(theme.TOUCH_MIN + 4, 48)
+        sheet_w = min(560, self.size[0] - 2 * MARGIN)
+        sheet_h = min(
+            self.size[1] - 2 * MARGIN,
+            pad + 32 + len(rows) * (row_h + gap) + btn_h + pad + 8,
+        )
+        sheet = pygame.Rect((self.size[0] - sheet_w) // 2,
+                            (self.size[1] - sheet_h) // 2,
+                            sheet_w, sheet_h)
+        panel(self.surface, sheet, theme.BG, shadow=True, focus=True)
+        head = pygame.Rect(sheet.x + pad, sheet.y + pad,
+                           sheet.width - 2 * pad, 28)
+        text(self.surface, "RANGERS ON LAUNCHER", head, 16, theme.TEXT,
+             bold=True, display=True, align="left")
+        y = head.bottom + 6
+        max_y = sheet.bottom - pad - btn_h - 8
+        for spec in rows:
+            if y + row_h > max_y:
+                break
+            rect = pygame.Rect(sheet.x + pad, y, sheet.width - 2 * pad, row_h)
+            on = spec.name in self._settings_draft
+            face = theme.blend(theme.BG_RAISED, theme.ACCENT, 0.55 if on else 0.0)
+            panel(self.surface, rect, face if on else theme.BG_SUNKEN)
+            mark = "ON " if on else "OFF"
+            text(self.surface, f"{mark}  {spec.title}",
+                 pygame.Rect(rect.x + 10, rect.y, rect.width - 20, rect.height),
+                 14, theme.ink_for(face if on else theme.BG_SUNKEN),
+                 bold=True, display=True, align="left")
+            self.chrome.add(f"settings:toggle:{spec.name}", rect)
+            y += row_h + gap
+        # Save / Cancel row
+        half = (sheet.width - 2 * pad - gap) // 2
+        save_r = pygame.Rect(sheet.x + pad, sheet.bottom - pad - btn_h,
+                             half, btn_h)
+        cancel_r = pygame.Rect(save_r.right + gap, save_r.y, half, btn_h)
+        button(self.surface, self.chrome, "settings:save", save_r,
+               "SAVE", 16, kind="prim")
+        button(self.surface, self.chrome, "settings:cancel", cancel_r,
+               "CANCEL", 16, kind="neut")
 
     def _glyph_play(self, rect: pygame.Rect, color) -> None:
         cx, cy = rect.center

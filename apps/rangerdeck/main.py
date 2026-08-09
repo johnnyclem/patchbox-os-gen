@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
     from core.config import deck_settings, load_config
     from core.engine import DeckFleet
     from core.registry import discover
+    from core.selection import resolve_order
     from gui.app import App
 
     config = load_config(args.config)
@@ -73,7 +74,10 @@ def main(argv: list[str] | None = None) -> int:
             else (config.display.width, config.display.height))
     fullscreen = args.fullscreen or config.display.fullscreen
 
-    specs = discover(order=settings.apps, fullscreen=fullscreen, size=size)
+    # Override file (/var/lib/rangerdeck/enabled-apps.txt) wins over config
+    # so patchbox-setup and the on-panel SETTINGS tile share one source.
+    order = resolve_order(settings.apps)
+    specs = discover(order=order, fullscreen=fullscreen, size=size)
     if not specs:
         log.error("no Ranger apps found beside %s — nothing to launch",
                   _ROOT)
@@ -82,11 +86,12 @@ def main(argv: list[str] | None = None) -> int:
     # with.
     run_dir = settings.run_dir or Path(tempfile.mkdtemp(prefix="rdeck-"))
     fleet = DeckFleet(specs, run_dir)
-    log.info("deck: %d app(s), sockets in %s",
-             len(specs), run_dir)
+    log.info("deck: %d app(s), sockets in %s, order=%s",
+             len(specs), run_dir, order)
 
     try:
-        app = App(fleet, size=size, fullscreen=fullscreen, config=config)
+        app = App(fleet, size=size, fullscreen=fullscreen, config=config,
+                  run_dir=run_dir, fullscreen_guests=fullscreen)
         return app.run()
     finally:
         # The deck going down takes the suite with it: on the appliance

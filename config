@@ -100,8 +100,15 @@ CHORDRANGER_HEIGHT="${CHORDRANGER_HEIGHT:-}"
 # One kiosk app owns the panel; RANGER_BOOT_APP names the unit that boots.
 # Everything else installs disabled and swaps on-device with
 #   sudo patchbox-app enable <app>
+#   sudo patchbox-setup boot set <app>     # also sets Patchbox module state
+#   patchbox module activate rangerdeck    # same path as MODEP
 # (ENABLE_CHORDRANGER_SERVICE=1 remains equivalent to
 #  RANGER_BOOT_APP=chordranger for the shipped stage-13 path.)
+#
+# First-boot on the unit (after flash) — same ease as MODEP:
+#   sudo patchbox-setup wizard
+#   → display type/size · audio/MIDI · ranger tiles · default app
+# Modules shipped: /usr/local/patchbox-modules/{rangerdeck,rk00pi}
 RANGER_BOOT_APP="${RANGER_BOOT_APP:-rk00pi}"
 
 # Per-app install toggles. Off until each app ships (its stage flips the
