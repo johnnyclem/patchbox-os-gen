@@ -108,7 +108,7 @@ class EditScreen(Screen):
                    f"P{index + 1}", 12, active=index == s.selected_part,
                    sub=view.name[:6].lower())
         button(surface, self.hits, "copyb", cells[4], "COPY▸B", 11,
-               color=theme.ACCENT2, sub="freeze morph")
+               sub="freeze morph")
         button(surface, self.hits, "fmode", cells[5],
                s.parts[s.selected_part].patch["filter_mode"].upper(), 12,
                sub="filter mode")

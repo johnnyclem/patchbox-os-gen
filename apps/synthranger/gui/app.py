@@ -359,7 +359,7 @@ class App:
                sub="clock")
         button(self.surface, self.chrome, "partcycle", cells[3],
                f"P{snapshot.selected_part + 1}", 14,
-               color=theme.ACCENT2,
+
                sub=snapshot.parts[snapshot.selected_part].engine)
         button(self.surface, self.chrome, "panic", cells[4], "PANIC", 12,
                kind="dang")

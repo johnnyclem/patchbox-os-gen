@@ -198,8 +198,7 @@ class MapScreen(Screen):
         top = row(cells[0], 2, gap=6)
         button(surface, self.hits, "rule", top[0], f"RULE {view.rule}", 14,
                sub="tap to cycle")
-        button(surface, self.hits, "reseed", top[1], "RESEED", 13,
-               color=theme.ACCENT2)
+        button(surface, self.hits, "reseed", top[1], "RESEED", 13)
         # The seed row, editable.
         seeds = row(cells[1].inflate(-4, -4), 16, gap=3)
         for bit, cell in enumerate(seeds):
@@ -233,7 +232,7 @@ class MapScreen(Screen):
                     str(view.max_interval)).draw(surface, self.hits,
                                                  cells[0], self._pressed)
         button(surface, self.hits, "reseed", cells[2], "RESEED", 13,
-               color=theme.ACCENT2, sub="new material")
+               sub="new material")
 
     def _lock_strip(self, surface, rect, view) -> None:
         steps, _paged = self._visible_steps(view)

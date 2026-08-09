@@ -71,7 +71,7 @@ class BrowserScreen(Screen):
                active=self._to_b, color=theme.ACCENT2,
                sub="load lands on")
         button(surface, self.hits, "save", cells[5], "SAVE", 12,
-               color=theme.ACCENT, sub="A ▸ user bank")
+               sub="A ▸ user bank")
         body = self._titled(surface, pygame.Rect(
             inner.x, strip.bottom + 6, inner.width,
             inner.bottom - strip.bottom - 6),

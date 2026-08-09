@@ -261,7 +261,7 @@ class ChordScreen(Screen):
         Stepper("oct", "OCT", f"{spec.octave:+d}", width=40).draw(
             surface, self.hits, dials[1], self._pressed, size=15)
         button(surface, self.hits, "play", dials[2], "AUDITION", 12,
-               color=theme.ACCENT, pressed=self.is_pressed("play"))
+               pressed=self.is_pressed("play"))
 
     def _draw_cruiser(self, surface, rect) -> None:
         panel(surface, rect, theme.BG_RAISED)

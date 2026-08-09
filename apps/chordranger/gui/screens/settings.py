@@ -126,9 +126,9 @@ class SettingsScreen(Screen):
                 continue
             name = ports[index]
             button(surface, self.hits, f"port{slot}", cell, name[:18], 12,
-                   display=False, color=theme.ACCENT3)
+                   display=False)
         button(surface, self.hits, "portpage", cells[6],
-               f"MORE ({len(ports)})", 11, color=theme.ACCENT3)
+               f"MORE ({len(ports)})", 11)
 
     def _draw_library(self, surface, rect) -> None:
         """Chordsets over styles, three of each with their own paging.
@@ -167,11 +167,10 @@ class SettingsScreen(Screen):
                    12, focus=active, display=False)
         actions = row(cells[6], 3, gap=4)
         button(surface, self.hits, "setpage", actions[0], f"SET {len(sets)}",
-               11, color=theme.ACCENT3)
+               11)
         button(surface, self.hits, "stylepage", actions[1],
-               f"STY {len(styles)}", 11, color=theme.ACCENT3)
-        button(surface, self.hits, "saveset", actions[2], "SAVE", 11,
-               color=theme.ACCENT3)
+               f"STY {len(styles)}", 11)
+        button(surface, self.hits, "saveset", actions[2], "SAVE", 11)
 
     def _draw_projects(self, surface, rect) -> None:
         body = self._head(surface, rect, "PROJECTS")
@@ -183,13 +182,13 @@ class SettingsScreen(Screen):
                 panel(surface, cell, theme.BG_SUNKEN)
                 continue
             button(surface, self.hits, f"proj:{slot}", cell,
-                   projects[slot][:18], 12, color=theme.ACCENT3,
+                   projects[slot][:18], 12,
                    display=False)
         actions = row(cells[5], 2, gap=4)
         button(surface, self.hits, "save", actions[0], "SAVE", 13,
-               color=theme.ACCENT2, pressed=self.is_pressed("save"))
+               pressed=self.is_pressed("save"))
         button(surface, self.hits, "new", actions[1], "NEW", 13,
-               color=theme.ACCENT3, pressed=self.is_pressed("new"))
+               pressed=self.is_pressed("new"))
         button(surface, self.hits, "panic", cells[6], "PANIC", 13,
                kind="dang", pressed=self.is_pressed("panic"),
                sub="ALL NOTES OFF")
@@ -213,8 +212,7 @@ class SettingsScreen(Screen):
                active=bool(snapshot and snapshot.clock_out),
                color=theme.ACCENT3)
         button(surface, self.hits, "theme", cells[4],
-               theme.COLORWAYS[theme.active()].label, 12,
-               color=theme.ACCENT3)
+               theme.COLORWAYS[theme.active()].label, 12)
         from core.version import __version__
         text(surface, f"CHORDRANGER {__version__}", cells[5], 11,
              theme.TEXT_DIM, display=True)

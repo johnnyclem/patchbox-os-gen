@@ -25,7 +25,10 @@ The implementation is `apps/rangerkit/gui/theme.py` (tokens, geometry) and
 `apps/rangerkit/gui/widgets.py` (every control). There is exactly one copy of
 each; the apps import them and must not re-derive a rule locally.
 `apps/rangerkit/tests/test_design_system.py` asserts the checkable claims
-below, so a divergence is a red build rather than a discovery.
+below, so a divergence is a red build rather than a discovery. Some of those
+tests read the suite's *source* rather than its pixels — a `button()` given a
+`color=` it can never apply, or a `shadow=` keyword, is invisible to a linter
+because the call is perfectly valid, and both have shipped that way before.
 
 ## Tokens
 
@@ -112,8 +115,8 @@ The states matrix, implemented once in `widgets.pad_face()`:
 
 | State | Drawn as |
 |---|---|
-| empty | sunken fill |
-| filled / stopped | surface fill, plus a mark |
+| empty | **surface** fill, dim rule |
+| filled / stopped | **well** fill, plus a mark |
 | queued / armed | orange **dimmed** fill |
 | playing | orange fill, inverse mark |
 | recording | red fill |
@@ -121,7 +124,22 @@ The states matrix, implemented once in `widgets.pad_face()`:
 | pressed | inverse fill |
 | selected | **cyan rule** (orthogonal to all of the above) |
 
-Two rules are easy to break by accident and account for most of what this
+Read the first two rows twice — they are counter-intuitive and easy to get
+backwards. The *empty* pad is the lighter **surface**; the *filled* one is the
+darker **well**. That is not a whim: on a near-black ground the two greys are
+a handful of levels apart and would collapse, but the well carries a blue cast
+the surface does not, so the pair separates by hue where lightness has nothing
+left to give. It is also the tightest the system ever gets — INDUSTRIAL's
+`#1A1A1A` against `#0D1A20` is 19 apart in RGB, against 537 in DAYLIGHT — and
+it is the specific pair to check first on a panel that looks muddy.
+
+Slot grids (a seed bank, a scene bank) are pads in everything but name: they
+take the same surface/well treatment via `button(filled=…)`, which keeps them
+pressable when empty, because pressing an empty slot is how you fill it.
+Occupancy is a surface, **never** an accent hue — a seed bank where every
+saved slot glowed orange claimed eight things were sounding.
+
+Two more rules are easy to break by accident and account for most of what this
 pass fixed:
 
 * **Press is geometry + inverse fill, never colour alone.** A control that

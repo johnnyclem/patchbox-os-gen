@@ -177,7 +177,7 @@ class SongScreen(Screen):
                active=song_mode, color=theme.ACCENT,
                sub="PLAY" if song_mode else "LIVE")
         button(surface, self.hits, "write", cells[2], "WRITE", 14,
-               color=theme.ACCENT3, pressed=self.is_pressed("write"),
+               pressed=self.is_pressed("write"),
                sub="HELD CHORD")
         button(surface, self.hits, "erase", cells[3], "ERASE", 14,
                kind="dang", pressed=self.is_pressed("erase"))
@@ -188,6 +188,6 @@ class SongScreen(Screen):
                 width=26).draw(surface, self.hits, cells[5], self._pressed,
                                size=11)
         button(surface, self.hits, "mark", cells[6], "SET MARK", 12,
-               color=theme.ACCENT3, pressed=self.is_pressed("mark"))
+               pressed=self.is_pressed("mark"))
         button(surface, self.hits, "locate", cells[7], "LOCATE", 12,
-               color=theme.ACCENT3, pressed=self.is_pressed("locate"))
+               pressed=self.is_pressed("locate"))

@@ -155,11 +155,16 @@ def pad_face(state: str, hue=None):
     """
     hue = hue or theme.ACCENT
     return {
-        # empty: surface fill, dim rule — present, but holding nothing.
-        "empty": theme.BG_SUNKEN,
-        # filled: well fill, and the caller supplies a mark.
-        "filled": theme.BG_RAISED,
-        "stopped": theme.BG_RAISED,
+        # The sheet is precise and counter-intuitive here, and worth reading
+        # twice: "empty pad — surface fill, dim rule", "filled pad — well
+        # fill, mark present". The *empty* one is the lighter surface and the
+        # *filled* one is the darker well. That is not an aesthetic whim: on a
+        # near-black ground the two greys are eight levels apart and would
+        # collapse, but the well carries a blue cast the surface does not, so
+        # the pair separates by hue where lightness has nothing left to give.
+        "empty": theme.BG_RAISED,
+        "filled": theme.BG_LCD,
+        "stopped": theme.BG_LCD,
         # queued/armed: orange *dimmed*, so it reads as "about to" next to a
         # pad that already is.
         "queued": theme.ACCENT2,
@@ -189,7 +194,15 @@ def pad(surface, rect, *, face=None, state: str = "empty",
     """
     if face is None:
         face = pad_face(state, hue)
-    panel(surface, rect, face, focus=selected)
+    # "empty pad — surface fill, *dim rule*". The rule is what makes a grid of
+    # empty cells read as a grid rather than as one large blank, so it stays;
+    # dimming it is what stops eight empty pads from being the loudest
+    # geometry on the screen.
+    surface.fill(face, rect)
+    rule(surface, rect, theme.blend(theme.BORDER, theme.BG, 0.45)
+         if state == "empty" else None)
+    if selected:
+        select_rule(surface, rect)
     if chip is not None:
         badge = pygame.Rect(rect.x + 4, rect.y + 4, 14, 10)
         surface.fill(theme.dim(chip) if state == "muted" else chip, badge)
@@ -244,7 +257,7 @@ def button(surface, hits: HitMap, key: str, rect, label: str,
            size: int = theme.TYPE_TITLE - 3, active: bool = False,
            pressed: bool = False, color=None, disabled: bool = False,
            display: bool = True, sub: str = "", kind: str = "neut",
-           focus: bool = False) -> pygame.Rect:
+           focus: bool = False, filled: bool | None = None) -> pygame.Rect:
     """The standard control.
 
     ``kind`` follows the component sheet: neut / prim / solo / mute / dang /
@@ -254,6 +267,22 @@ def button(surface, hits: HitMap, key: str, rect, label: str,
     red for M is how the suite drifted apart in the first place.
 
     ``pressed`` is an inverse fill (BG_PRESS), never a colour swap alone.
+
+    ``color`` is the face used **when the control is active** — it is not a
+    resting colour, and passing it without ``active`` or a ``kind`` does
+    nothing at all. That combination is a bug (it hid eighteen destructive
+    buttons for months) and ``test_design_system`` fails the build on it.
+
+    ``filled`` marks a control that is a *slot* — a seed bank, a scene bank,
+    anything that either holds something or does not. ``True`` gives it the
+    well face the states matrix wants for a filled pad, ``False`` the plain
+    surface of an empty one, and the default ``None`` means "not a slot, an
+    ordinary button". Occupancy is a surface, never an accent hue: orange
+    means playing, and a seed bank where every saved slot glowed orange
+    claimed eight things were sounding.
+
+    Unlike ``disabled``, an empty slot stays pressable — pressing it is how
+    you fill it.
     """
     if disabled or kind == "dis":
         face = theme.BG_SUNKEN
@@ -268,6 +297,8 @@ def button(surface, hits: HitMap, key: str, rect, label: str,
         face = color or theme.ACCENT
     elif kind == "dang":
         face = theme.DANGER
+    elif filled:
+        face = theme.BG_LCD
     else:
         face = theme.BG_RAISED
     panel(surface, rect, face, focus=focus)

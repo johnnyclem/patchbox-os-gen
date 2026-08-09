@@ -73,7 +73,7 @@ class SeedsScreen(Screen):
             button(surface, self.hits, f"seed{slot}", pad,
                    f"S{slot + 1}", 16,
                    pressed=self.is_pressed(f"seed{slot}"),
-                   color=theme.ACCENT if used else None,
+                   filled=used,
                    sub="" if used else "empty")
 
     def _timeline(self, surface, rect, s) -> None:
@@ -107,5 +107,4 @@ class SeedsScreen(Screen):
             f"{s.timeline_len}", size=16,
             label="STATES" if s.timeline_pos < 0
             else f"AT {position + 1}/{s.timeline_len}")
-        button(surface, self.hits, "reseed", bottom[1], "RESEED ALL", 12,
-               color=theme.ACCENT2)
+        button(surface, self.hits, "reseed", bottom[1], "RESEED ALL", 12)

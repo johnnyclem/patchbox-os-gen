@@ -13,8 +13,8 @@ from core import commands as cmd
 from core.steps import CONDITIONS, PADS, PLOCK_NAMES, STEPS
 from gui.screens.base import Screen, cycle
 from rangerkit.gui import theme
-from rangerkit.gui.widgets import Stepper, button, column, row, \
-    section_head
+from rangerkit.gui.widgets import Stepper, button, column, param, \
+    row, section_head
 
 STEPPED = ("vel", "prob", "rat", "mic", "len", "swg", "pls",
            "ltune", "lfilt", "lpan")
@@ -234,12 +234,22 @@ class SeqScreen(Screen):
         Stepper("pls", "PULSES", str(self._pulses), width=36).draw(
             surface, self.hits, top[0], self._pressed, size=13)
         button(surface, self.hits, "euc", top[1], "EUCLID", 13,
-               color=theme.ACCENT2, sub=f"{self._pulses}/{s.length}")
+               sub=f"{self._pulses}/{s.length}")
         mid = row(lines[1], 2, gap=4)
         Stepper("len", "LENGTH", f"{s.length}", width=36).draw(
             surface, self.hits, mid[0], self._pressed, size=13)
         Stepper("swg", "SWING", f"{s.swing:.0%}", width=36).draw(
             surface, self.hits, mid[1], self._pressed, size=13)
-        button(surface, self.hits, "row", lines[2], "CLEAR ROW", 13,
+        # CLEAR ROW is destructive, so it is red — and a red control that also
+        # happens to be the widest thing on the screen reads as the primary
+        # action, which is the last thing a row-wipe should look like. Half the
+        # line, with a count of what it would take beside it: the readout
+        # answers "how much am I about to lose?" without a confirm dialog,
+        # which an instrument panel has no room for anyway.
+        tail = row(lines[2], 2, gap=4)
+        live = sum(1 for step in s.pattern[s.selected_pad][:s.length]
+                   if step.on)
+        param(surface, tail[0], "STEPS ON", f"{live}/{s.length}", size=13)
+        button(surface, self.hits, "row", tail[1], "CLEAR ROW", 13,
                kind="dang",
                sub=s.pads[s.selected_pad].name.lower())
