@@ -127,8 +127,7 @@ class SongScreen(Screen):
                                size=12)
         Stepper("addps", "PASSES", f"×{self._passes}", width=32).draw(
             surface, self.hits, add[1], self._pressed, size=12)
-        button(surface, self.hits, "add", add[2], "ADD", 14,
-               color=theme.ACCENT2)
+        button(surface, self.hits, "add", add[2], "ADD", 14)
         controls = row(lines[2], 2, gap=4)
         button(surface, self.hits, "on", controls[0],
                "SONG ON" if s.chain_on else "SONG OFF", 14,

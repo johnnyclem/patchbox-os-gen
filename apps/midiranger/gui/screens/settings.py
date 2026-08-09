@@ -117,8 +117,7 @@ class SettingsScreen(Screen):
         cells = column(body, 4, gap=6)
         lcd(surface, cells[0], s.project_name[:14], size=15, label="PROJECT")
         files = row(cells[1], 2, gap=5)
-        button(surface, self.hits, "save", files[0], "SAVE", 14,
-               color=theme.ACCENT)
+        button(surface, self.hits, "save", files[0], "SAVE", 14)
         button(surface, self.hits, "new", files[1], "NEW", 14)
         button(surface, self.hits, "theme", cells[2],
                theme.active(), 13, sub="theme")

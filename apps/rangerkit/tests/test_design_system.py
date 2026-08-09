@@ -12,11 +12,16 @@ language and not the layouts, and this panel is 1280x400.
 """
 from __future__ import annotations
 
+import ast
+from pathlib import Path
+
 import pygame
 import pytest
 
 from rangerkit.gui import theme
 from rangerkit.gui.widgets import HitMap, button, lcd, pad, pad_face, panel
+
+APPS = Path(__file__).resolve().parents[2]
 
 
 @pytest.fixture(autouse=True)
@@ -150,14 +155,29 @@ def test_playing_is_an_orange_fill_and_armed_is_dimmer():
 
 
 def test_empty_and_filled_pads_are_distinguishable():
-    """§States: an empty pad and a pad holding a clip are different surfaces.
+    """§States: "empty pad — surface fill", "filled pad — well fill".
+
     This is the exact failure the light colourway was introduced to dodge, so
-    it is worth asserting on every scheme rather than trusting one."""
+    it is worth asserting on every scheme rather than trusting one. Lightness
+    alone is not enough of a test: on a near-black ground the surface and the
+    well are only a few levels apart and it is the well's blue cast that does
+    the separating, so measure the whole distance, not just the grey.
+
+    The bar is deliberately low, because INDUSTRIAL only just clears it: the
+    sheet's own #1A1A1A and #0D1A20 are 19 apart, most of that in one channel.
+    That is the tightest the design system ever gets, it is a real risk on a
+    washed panel, and DAYLIGHT — where the same pair is 537 apart — is the
+    documented answer when a given unit cannot hold it. A stricter threshold
+    here would fail the sheet rather than the code.
+    """
     for name in theme.COLORWAY_NAMES:
         theme.apply(name)
-        gap = abs(theme.luminance(pad_face("empty"))
-                  - theme.luminance(pad_face("filled")))
-        assert gap > 0.01, f"{name}: empty and filled pads collapse"
+        empty, filled = pad_face("empty"), pad_face("filled")
+        assert empty == theme.BG_RAISED and filled == theme.BG_LCD, \
+            f"{name}: empty/filled must be surface/well, in that order"
+        distance = sum(abs(a - b) for a, b in zip(empty, filled))
+        assert distance >= 18, \
+            f"{name}: empty and filled pads collapse ({distance} apart)"
 
 
 def test_mute_dims_rather_than_hides():
@@ -221,6 +241,80 @@ def test_a_captioned_readout_draws_its_caption_permanently():
                     for x in range(rect.x + 4, rect.right - 4)]
     assert any(px != theme.BG_LCD for px in caption_band), \
         "the caption row is empty — the caption was not drawn"
+
+
+def test_an_empty_slot_is_a_surface_and_still_pressable():
+    """The states matrix distinguishes an empty slot from a filled one by
+    *surface*, not by an accent hue — a seed bank where every saved slot
+    glowed orange claimed eight things were sounding. And unlike ``disabled``,
+    an empty slot must stay pressable: pressing it is how you fill it."""
+    theme.apply("industrial")
+    canvas, hits = surface(), HitMap()
+    empty = pygame.Rect(10, 10, 60, 44)
+    button(canvas, hits, "s1", empty, "S1", filled=False)
+    assert canvas.get_at((empty.x + 5, empty.y + 5))[:3] == theme.BG_RAISED
+
+    full = pygame.Rect(10, 80, 60, 44)
+    button(canvas, hits, "s2", full, "S2", filled=True)
+    assert canvas.get_at((full.x + 5, full.y + 5))[:3] == theme.BG_LCD
+    assert set(hits.keys()) == {"s1", "s2"}, "an empty slot must stay pressable"
+
+    # The default is "not a slot at all" — an ordinary button must not quietly
+    # become a well just because this parameter exists.
+    plain = pygame.Rect(10, 150, 60, 44)
+    button(canvas, hits, "s3", plain, "GO")
+    assert canvas.get_at((plain.x + 5, plain.y + 5))[:3] == theme.BG_RAISED
+
+
+# --- the suite, read as source ------------------------------------------------
+
+def _button_calls():
+    """Every ``button(...)`` call in every app's GUI, as (path, node)."""
+    for path in sorted(APPS.glob("*/gui/**/*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if (isinstance(node, ast.Call)
+                    and getattr(node.func, "id", None) == "button"):
+                yield path, node
+
+
+def test_no_button_passes_a_colour_it_cannot_use():
+    """``color`` is the face used *when active*. Passing it with neither
+    ``active`` nor ``kind`` does nothing whatsoever, silently.
+
+    This is not hypothetical tidiness. Eighteen destructive controls — PANIC,
+    CLEAR, CLEAR ROW, ERASE, REMOVE — passed ``color=theme.DANGER`` through
+    this hole and rendered neutral grey on shipped panels, and thirty-four
+    more carried an accent nobody ever saw. A linter cannot see it because
+    the argument is real and the call is valid, so the gate has to live here.
+    """
+    offenders = []
+    for path, node in _button_calls():
+        kwargs = {k.arg for k in node.keywords}
+        if "color" in kwargs and not {"active", "kind"} & kwargs:
+            offenders.append(f"{path.relative_to(APPS)}:{node.lineno}")
+    assert not offenders, (
+        "button(color=...) with no active= or kind= is dead — either wire "
+        "the state that makes it apply, or drop the argument:\n  "
+        + "\n  ".join(offenders))
+
+
+def test_nothing_passes_a_shadow_keyword():
+    """§Component sheet: "No shadows, no gradients."
+
+    ``panel()`` raises on the keyword now, but only for a screen some test
+    actually draws. Reading the source catches the one nobody draws, which is
+    exactly where a stale call survives.
+    """
+    offenders = []
+    for path in sorted(APPS.glob("*/gui/**/*.py")):
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and any(
+                    k.arg == "shadow" for k in node.keywords):
+                offenders.append(f"{path.relative_to(APPS)}:{node.lineno}")
+    assert not offenders, "shadows are out of the design system:\n  " + \
+        "\n  ".join(offenders)
 
 
 def test_a_meter_registers_no_hit():

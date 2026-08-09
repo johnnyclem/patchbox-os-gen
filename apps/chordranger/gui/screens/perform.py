@@ -222,5 +222,4 @@ class PerformScreen(Screen):
                color=theme.ACCENT2,
                sub=f"{snapshot.song_bar + 1}/{snapshot.song_bars}"
                if snapshot and song else "OFF")
-        button(surface, self.hits, "cruise", cells[8], "CRUISE", 12,
-               color=theme.ACCENT3)
+        button(surface, self.hits, "cruise", cells[8], "CRUISE", 12)

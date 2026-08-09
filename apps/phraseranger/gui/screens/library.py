@@ -55,7 +55,7 @@ class LibraryScreen(Screen):
             button(surface, self.hits, f"scene{slot}", pad,
                    f"S{slot + 1}", 16,
                    pressed=self.is_pressed(f"scene{slot}"),
-                   color=theme.ACCENT if used else None,
+                   filled=used,
                    sub="" if used else "empty")
         head = pygame.Rect(file_col.x, file_col.y, file_col.width, 18)
         section_head(surface, head, "PROJECT")
@@ -65,8 +65,7 @@ class LibraryScreen(Screen):
         lcd(surface, cells[0], s.project_name[:14], size=15,
             label="PROJECT")
         files = row(cells[1], 2, gap=5)
-        button(surface, self.hits, "save", files[0], "SAVE", 14,
-               color=theme.ACCENT)
+        button(surface, self.hits, "save", files[0], "SAVE", 14)
         button(surface, self.hits, "new", files[1], "NEW", 14)
         takes = sum(view.notes for view in s.tracks)
         lcd(surface, cells[2], str(takes), size=16, label="NOTES HELD")

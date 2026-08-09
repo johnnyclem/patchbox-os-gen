@@ -56,7 +56,7 @@ class SliceScreen(Screen):
                    color=theme.ACCENT if view.notes else None,
                    sub=str(view.notes) if view.notes else "empty")
         button(surface, self.hits, "mode", cells[-1], s.slice_mode, 12,
-               color=theme.ACCENT2, sub="mode")
+               sub="mode")
         pads_rect = pygame.Rect(inner.x, strip.bottom + 6, inner.width,
                                 inner.bottom - strip.bottom - 6)
         wide = theme.is_wide(self.rect)

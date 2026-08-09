@@ -70,7 +70,7 @@ class ArrangeScreen(Screen):
         for scene, cell in enumerate(scene_row):
             button(surface, self.hits, f"add{scene}", cell,
                    f"S{scene + 1}", 12,
-                   color=theme.ACCENT2 if s.scenes_filled[scene] else None,
+                   filled=s.scenes_filled[scene],
                    pressed=self.is_pressed(f"add{scene}"))
         Stepper("bars", "BARS PER ENTRY", str(self._bars)).draw(
             surface, self.hits, cells[1], self._pressed)

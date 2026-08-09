@@ -90,7 +90,7 @@ class PerformScreen(Screen):
                active=s.cruise_on, color=theme.ACCENT,
                sub="evolving" if s.cruise_on else "held")
         button(surface, self.hits, "mutate", top[1], "MUTATE", 15,
-               color=theme.ACCENT2, sub="now",
+               sub="now",
                pressed=self.is_pressed("mutate"))
         Stepper("chaos", "CHAOS", f"{s.chaos:.0%}").draw(
             surface, self.hits, cells[1], self._pressed)

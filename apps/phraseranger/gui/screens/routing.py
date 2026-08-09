@@ -121,10 +121,9 @@ class RoutingScreen(Screen):
         Stepper("chan", "CHANNEL", str(view.channel + 1)).draw(
             surface, self.hits, cells[1], self._pressed)
         verbs = row(cells[2], 2, gap=5)
-        button(surface, self.hits, "reverse", verbs[0], "REVERSE", 12,
-               color=theme.ACCENT2)
+        button(surface, self.hits, "reverse", verbs[0], "REVERSE", 12)
         button(surface, self.hits, "half", verbs[1], "½×", 14,
-               color=theme.ACCENT2, display=False)
+               display=False)
 
     def _length(self, surface, rect, view) -> None:
         cells = column(rect, 3, gap=5)
@@ -135,7 +134,7 @@ class RoutingScreen(Screen):
         Stepper("tbars", "BARS", str(view.bars)).draw(
             surface, self.hits, cells[1], self._pressed)
         button(surface, self.hits, "double", cells[2], "2×", 14,
-               color=theme.ACCENT2, sub="stretch")
+               sub="stretch")
 
     def _feel(self, surface, rect, view) -> None:
         cells = column(rect, 3, gap=5)
