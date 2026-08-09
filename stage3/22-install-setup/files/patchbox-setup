@@ -289,9 +289,8 @@ EOF
 			set_panel_size 1280 400
 			;;
 		waveshare79)
-			if [ -x /usr/local/sbin/patchbox-fix-waveshare79 ] 2>/dev/null; then
-				:
-			fi
+			# Native DRM 400×1280, NO kernel rotate (kmsdrm blacks the panel
+			# if video=…,rotate=90 is paired with a 1280×400 app window).
 			cat >> "${tmp}" <<'EOF'
 
 # --- HDMI ultrawide (Waveshare 7.9 native 400x1280; app landscape 1280x400) ---
@@ -305,12 +304,22 @@ hdmi_drive=2
 EOF
 			set_cmdline_video "video=HDMI-A-1:400x1280M@60"
 			set_panel_size 1280 400
-			# optional software rotate note in rk00pi
-			if [ -f /etc/rk00pi/config.toml ]; then
-				if grep -qE '^rotation[[:space:]]*=' /etc/rk00pi/config.toml; then
-					sed -i -E 's/^rotation[[:space:]]*=.*/rotation = 90/' /etc/rk00pi/config.toml || true
-				fi
+			# Prefer the field fixer when present (also patches rotation in tomls).
+			if [ -x /usr/local/sbin/patchbox-fix-waveshare79 ]; then
+				cp "${tmp}" "${BOOT_CFG}"
+				rm -f "${tmp}"
+				/usr/local/sbin/patchbox-fix-waveshare79 || true
+				DISPLAY_PROFILE=waveshare79
+				save_state
+				echo "display → waveshare79 (reboot required)"
+				return
 			fi
+			for cfg in /etc/rk00pi/config.toml /etc/rangerdeck/config.toml; do
+				[ -f "${cfg}" ] || continue
+				if grep -qE '^rotation[[:space:]]*=' "${cfg}"; then
+					sed -i -E 's/^rotation[[:space:]]*=.*/rotation = 90/' "${cfg}" || true
+				fi
+			done
 			;;
 		waveshare35)
 			if [ ! -f /boot/firmware/overlays/waveshare-35dpi.dtbo ] \

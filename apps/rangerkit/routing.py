@@ -27,18 +27,19 @@ INTERNAL = "internal"           # the app's own engine (synth, sampler, …)
 INPUTS = (TRS_A_IN, TRS_B_IN, DIN_IN, USB_IN)
 OUTPUTS = (TRS_A_OUT, TRS_B_OUT, DIN_OUT, USB_OUT, INTERNAL)
 
-# Port-name substrings tried in order when binding each endpoint. Pimidi
-# enumerates its two TRS pairs as separate ALSA ports ("pimidi … 0"/"1" on
-# current firmware); Pisound's DIN is simply "pisound"; USB prefers the
-# gadget port (f_midi) and falls back to any USB device. "midi through" is
-# deliberately absent everywhere: routing through it echoes back.
+# Port-name substrings tried in order when binding each endpoint.
+# PiMIDI (Blokas) shows up as ALSA client ``pimidi0`` with ports ``a`` / ``b``
+# (display names ``pimidi0:a`` / ``pimidi0:b`` under both alsa-midi and
+# mido/rtmidi). Older match strings stay as fallbacks. Pisound DIN is
+# ``pisound``. USB prefers the gadget port (f_midi). "midi through" is
+# deliberately absent: routing through it echoes back into the matrix.
 PREFER: dict[str, tuple[str, ...]] = {
-    TRS_A_IN: ("pimidi-a", "pimidi 0", "pimidi"),
-    TRS_A_OUT: ("pimidi-a", "pimidi 0", "pimidi"),
-    TRS_B_IN: ("pimidi-b", "pimidi 1"),
-    TRS_B_OUT: ("pimidi-b", "pimidi 1"),
-    DIN_IN: ("pisound",),
-    DIN_OUT: ("pisound",),
+    TRS_A_IN: ("pimidi0:a", "pimidi-a", "pimidi 0", "pimidi0", "pimidi"),
+    TRS_A_OUT: ("pimidi0:a", "pimidi-a", "pimidi 0", "pimidi0", "pimidi"),
+    TRS_B_IN: ("pimidi0:b", "pimidi-b", "pimidi 1", "pimidi0:b"),
+    TRS_B_OUT: ("pimidi0:b", "pimidi-b", "pimidi 1"),
+    DIN_IN: ("pisound", "din"),
+    DIN_OUT: ("pisound", "din"),
     USB_IN: ("f_midi", "usb"),
     USB_OUT: ("f_midi", "usb"),
 }

@@ -25,7 +25,7 @@ data_dir = "/var/lib/phraseranger"
 presets_dir = "/var/lib/phraseranger/presets"
 
 [midi]
-# auto tries mido/python-rtmidi (the ALSA sequencer) and degrades to a silent
+# auto: native ALSA seq (alsa-midi) → mido/rtmidi → null. Degrades to a silent
 # null backend rather than refusing to boot. The SET screen says which one is
 # in force and what each track's destination is bound to.
 backend = "auto"

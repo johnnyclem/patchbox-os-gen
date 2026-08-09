@@ -8,3 +8,4 @@
 pygame>=2.5          # the panel (SDL2 KMS/DRM kiosk)
 mido>=1.3            # MIDI message model
 python-rtmidi>=1.5   # mido's ALSA sequencer backend
+alsa-midi>=1.0          ; platform_system == "Linux"  # native ALSA seq

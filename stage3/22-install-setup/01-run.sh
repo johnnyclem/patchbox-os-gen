@@ -18,26 +18,32 @@ ln -sfn /usr/local/bin/patchbox-setup \
 	"${ROOTFS_DIR}/usr/local/sbin/patchbox-setup"
 
 # --- Patchbox modules (appear in `patchbox` → modules, like MODEP) ---------
-MODULES_SRC="${BASE_DIR}/deploy/modules"
+# Source lives in repo-root modules/ — NOT under deploy/ (gitignored +
+# dockerignored, so a path there never reaches the pi-gen image).
+MODULES_SRC="${BASE_DIR}/modules"
 MODULES_DST="${ROOTFS_DIR}/usr/local/patchbox-modules"
 install -d "${MODULES_DST}"
 
-for mod in rangerdeck rk00pi; do
-	if [ ! -f "${MODULES_SRC}/${mod}/patchbox-module.json" ]; then
-		echo "WARNING: module source missing: ${MODULES_SRC}/${mod}"
-		continue
-	fi
-	install -d "${MODULES_DST}/${mod}"
-	install -m 644 "${MODULES_SRC}/${mod}/patchbox-module.json" \
-		"${MODULES_DST}/${mod}/"
-	for script in install.sh launch.sh stop.sh; do
-		if [ -f "${MODULES_SRC}/${mod}/${script}" ]; then
-			install -m 755 "${MODULES_SRC}/${mod}/${script}" \
-				"${MODULES_DST}/${mod}/"
+if [ ! -d "${MODULES_SRC}" ]; then
+	echo "WARNING: ${MODULES_SRC} missing — rangerdeck/rk00pi modules not shipped"
+else
+	for mod in rangerdeck rk00pi; do
+		if [ ! -f "${MODULES_SRC}/${mod}/patchbox-module.json" ]; then
+			echo "WARNING: module source missing: ${MODULES_SRC}/${mod}"
+			continue
 		fi
+		install -d "${MODULES_DST}/${mod}"
+		install -m 644 "${MODULES_SRC}/${mod}/patchbox-module.json" \
+			"${MODULES_DST}/${mod}/"
+		for script in install.sh launch.sh stop.sh; do
+			if [ -f "${MODULES_SRC}/${mod}/${script}" ]; then
+				install -m 755 "${MODULES_SRC}/${mod}/${script}" \
+					"${MODULES_DST}/${mod}/"
+			fi
+		done
+		echo "  module: /usr/local/patchbox-modules/${mod}"
 	done
-	echo "  module: /usr/local/patchbox-modules/${mod}"
-done
+fi
 
 # --- Always-on display helpers (so display set works without re-bake) ------
 # Overlays + fix scripts from the profile stages, even when that profile
@@ -74,6 +80,12 @@ if [ -f "${HDMI_FILES}/patchbox-touch-probe" ] \
 	&& [ ! -f "${ROOTFS_DIR}/usr/local/bin/patchbox-touch-probe" ]; then
 	install -m 755 "${HDMI_FILES}/patchbox-touch-probe" \
 		"${ROOTFS_DIR}/usr/local/bin/patchbox-touch-probe"
+fi
+# Waveshare 7.9 field fixer (native 400×1280, no kernel rotate)
+if [ -f "${BASE_DIR}/scripts/fix-waveshare79-bootfs.sh" ]; then
+	install -m 755 "${BASE_DIR}/scripts/fix-waveshare79-bootfs.sh" \
+		"${ROOTFS_DIR}/usr/local/sbin/patchbox-fix-waveshare79"
+	echo "  field fix: patchbox-fix-waveshare79"
 fi
 
 # --- Seed patchbox module state for the bake-time boot app -----------------
@@ -139,42 +151,28 @@ echo
 EOF
 chmod 755 "${MOTD}"
 
-# Extend first-run: after stock patchbox wizard, offer our setup once.
-# We wrap the existing profile.d script rather than replace the stock wizard.
-FIRST_RUN="${ROOTFS_DIR}/etc/profile.d/patchbox-first-run.sh"
-if [ -f "${FIRST_RUN}" ]; then
-	if ! grep -q 'patchbox-setup' "${FIRST_RUN}"; then
-		cat >> "${FIRST_RUN}" <<'EOF'
-
-# Rangers / RK-00pi hardware + boot-app setup (once).
-if [ ! -e ~/.config/patchbox-setup-wizard-run ]; then
-	mkdir -p ~/.config
-	touch ~/.config/patchbox-setup-wizard-run
-	if [ -x /usr/local/bin/patchbox-setup ]; then
-		echo
-		echo ">>> Hardware / Rangers setup (display, MIDI, tiles, boot app)"
-		echo ">>> Skip anytime with Ctrl-C; re-run: sudo patchbox-setup wizard"
-		echo
-		sudo patchbox-setup wizard || true
-	fi
-fi
-EOF
-	fi
-else
-	# Stock first-run missing — still ship a setup hook
-	cat > "${ROOTFS_DIR}/etc/profile.d/zz-patchbox-setup.sh" <<'EOF'
+# Do NOT auto-launch the interactive setup wizard on login.
+# An interactive `sudo patchbox-setup wizard` on console-autologin races the
+# kiosk for the TTY (and confuses headless boots). MOTD + ~/SETUP.txt point
+# operators at the command; first-run only prints a one-shot reminder.
+FIRST_RUN="${ROOTFS_DIR}/etc/profile.d/zz-patchbox-setup-hint.sh"
+cat > "${FIRST_RUN}" <<'EOF'
 #!/bin/sh
-if [ ! -e ~/.config/patchbox-setup-wizard-run ]; then
-	mkdir -p ~/.config
-	touch ~/.config/patchbox-setup-wizard-run
+# One-shot reminder — never blocks the kiosk or runs sudo prompts.
+if [ ! -e ~/.config/patchbox-setup-hint-shown ]; then
+	mkdir -p ~/.config 2>/dev/null || true
+	touch ~/.config/patchbox-setup-hint-shown 2>/dev/null || true
 	if [ -x /usr/local/bin/patchbox-setup ]; then
-		echo ">>> Run: sudo patchbox-setup wizard"
-		sudo patchbox-setup wizard || true
+		echo
+		echo ">>> Display / MIDI / Rangers / boot app:"
+		echo ">>>   sudo patchbox-setup wizard"
+		echo ">>>   patchbox-setup status"
+		echo ">>> Docs: ~/SETUP.txt"
+		echo
 	fi
 fi
 EOF
-	chmod 644 "${ROOTFS_DIR}/etc/profile.d/zz-patchbox-setup.sh"
-fi
+chmod 644 "${FIRST_RUN}"
 
 # State dir for the tool
 install -d "${ROOTFS_DIR}/var/lib/patchbox-setup"

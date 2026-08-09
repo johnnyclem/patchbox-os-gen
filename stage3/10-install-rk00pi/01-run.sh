@@ -642,6 +642,16 @@ UNIT
 else
 	systemctl disable rk00pi.service 2>/dev/null || true
 	echo "rk00pi.service installed but disabled (ENABLE_RK00PI_SERVICE!=1)"
+	# When a Ranger boots instead (RANGER_BOOT_APP=rangerdeck/…), stage 10
+	# used to skip ALL appliance hygiene — LightDM stayed enabled and a
+	# later graphical pull-in blacks the kmsdrm kiosk. Still force console
+	# boot here; the boot app's install script re-asserts multi-user too.
+	systemctl set-default multi-user.target
+	systemctl disable lightdm.service 2>/dev/null || true
+	ln -sfn /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+	systemctl disable jack.service 2>/dev/null || true
+	systemctl disable amidiauto.service 2>/dev/null || true
+	echo "  appliance boot: multi-user; lightdm/jack/amidiauto disabled (ranger boot app owns panel)"
 fi
 
 # The Button daemon: package usually enables itself, but be explicit so a

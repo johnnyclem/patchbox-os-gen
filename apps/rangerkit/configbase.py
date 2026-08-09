@@ -50,18 +50,25 @@ class PathsConfig:
 
 @dataclass(frozen=True, slots=True)
 class MidiConfig:
-    """``backend`` is "auto" | "mido" | "null".
+    """``backend`` is "auto" | "alsa" | "mido" | "null".
+
+    ``auto`` (default) tries native ALSA seq first, then mido/rtmidi.
+    Both talk to the same ALSA sequencer on the Pi — "mido" is the library
+    name, not a separate bus. Pin ``alsa`` for appliance parity with RK-00pi.
 
     ``out_port`` is matched as a case-insensitive substring against the port
-    names, so "pisound" finds it whichever ALSA client number it landed on
-    this boot. Empty means "take the first preferred port".
+    names, so "pisound" / "pimidi" finds the HAT whichever client number it
+    landed on this boot. Empty means "take the first preferred port".
     """
 
     backend: str = "auto"
     out_port: str = ""
     in_port: str = ""
     clock_out: bool = False
-    prefer: tuple[str, ...] = ("pisound", "f_midi", "midi through")
+    prefer: tuple[str, ...] = (
+        "pimidi0:a", "pimidi0", "pimidi", "pisound", "f_midi", "usb",
+        "midi through",
+    )
 
 
 @dataclass(frozen=True, slots=True)

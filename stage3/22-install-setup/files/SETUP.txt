@@ -79,6 +79,20 @@ Display / HAT changes that rewrite /boot/firmware/config.txt need:
 
   sudo reboot
 
+Waveshare 7.9″ black panel after a generic (1280×400 cvt) image
+--------------------------------------------------------------
+That panel wants native 400×1280 timings, not hdmi_cvt=1280 400. Fix:
+
+  sudo patchbox-setup display set waveshare79
+  sudo reboot
+
+  # or the field script (same result):
+  sudo patchbox-fix-waveshare79
+  sudo reboot
+
+Never use kernel rotate=90 with SDL kmsdrm on this glass — it wraps the
+UI then goes black. App window stays 1280×400; DRM mode stays 400×1280.
+
 Docs
 ----
   ~/SOAK-PROFILE-A.md

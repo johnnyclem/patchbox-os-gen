@@ -25,19 +25,19 @@ data_dir = "/var/lib/chordranger"
 presets_dir = "/var/lib/chordranger/presets"
 
 [midi]
-# auto tries mido/python-rtmidi (the ALSA sequencer) and degrades to a silent
-# null backend rather than refusing to boot. The Settings screen says which
-# one is in force and what it is bound to.
+# auto: native ALSA seq (alsa-midi) → mido/rtmidi → null. Both ALSA paths
+# see PiSound / PiMIDI; "mido" is the library name, not a separate bus.
+# Pin backend = "alsa" for appliance parity with RK-00pi.
 backend = "auto"
-# Matched as a case-insensitive substring against the port names, so "pisound"
-# finds it whichever ALSA client number it landed on this boot. Leave empty to
-# take the first port in `prefer`.
+# Matched as a case-insensitive substring against the port names, so
+# "pimidi" / "pisound" finds the HAT whichever client number it landed on.
+# Leave empty to take the first port in `prefer`.
 out_port = ""
 in_port = ""
-# Order matters: pisound first because on this appliance that is the DIN
-# socket. "Midi Through" is last precisely because it is always present and
-# would otherwise win every time and play to nobody.
-prefer = ["pisound", "f_midi", "usb", "midi through"]
+# Order matters: PiMIDI TRS A, then any pimidi, then Pisound DIN, then USB.
+# "Midi Through" is last so it never steals a real HAT.
+prefer = ["pimidi0:a", "pimidi0", "pimidi", "pisound", "f_midi", "usb",
+          "midi through"]
 # Send MIDI clock with the transport. Off by default: a box that starts
 # clocking the moment it boots will surprise whatever is downstream.
 clock_out = false

@@ -312,8 +312,16 @@ if [ "${BOOT_THIS}" = "1" ]; then
 		systemctl disable "\${unit}" 2>/dev/null || true
 	done
 	systemctl enable "\${APP}.service"
+	# Same appliance hygiene stage3/10 does for rk00pi — required when
+	# RANGER_BOOT_APP is a Ranger (ENABLE_RK00PI_SERVICE=0 skips that path).
+	# LightDM / graphical.target owns DRM and leaves the kiosk with a black
+	# panel; JACK/amidiauto fight exclusive PCM + MIDI binds.
 	systemctl set-default multi-user.target
-	echo "\${APP}.service enabled (siblings disabled)"
+	systemctl disable lightdm.service 2>/dev/null || true
+	ln -sfn /lib/systemd/system/multi-user.target /etc/systemd/system/default.target
+	systemctl disable jack.service 2>/dev/null || true
+	systemctl disable amidiauto.service 2>/dev/null || true
+	echo "\${APP}.service enabled (siblings disabled; multi-user; lightdm/jack off)"
 else
 	systemctl disable "\${APP}.service" 2>/dev/null || true
 	echo "\${APP}.service installed but not enabled"

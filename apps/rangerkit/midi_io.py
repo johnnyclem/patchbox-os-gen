@@ -1,18 +1,21 @@
 """MIDI output and input, behind one small protocol.
 
-Three backends satisfy ``MidiIO``: mido/python-rtmidi (the ALSA sequencer on
-the appliance and on any dev box), a capture backend the tests use to assert
-on exact bytes, and a null backend that drops everything.
+Backends that satisfy ``MidiIO``:
 
-Degrading to null is deliberate and load-bearing. An appliance whose MIDI
-package failed to install should boot, draw its panel, and *say* on the
-Settings screen that it has no output — not refuse to start. A silent
-instrument you can diagnose beats a black screen every time.
+* **alsa** — native ALSA sequencer via ``alsa-midi`` (appliance default;
+  same path as RK-00pi). Sees PiSound / PiMIDI / USB as real seq clients
+  with announce-friendly binds. See ``rangerkit.midi_alsa``.
+* **mido** — mido + python-rtmidi (also talks to the ALSA seq on Linux;
+  the label is the *library*, not a separate bus). Dev hosts and fallback.
+* **null** / **capture** — silent / test ears.
+
+``open_midi(backend="auto")`` tries alsa → mido → null. Degrading to null
+is deliberate: an appliance whose MIDI package failed to install should
+boot, draw its panel, and *say* on SET that it has no output.
 
 Sends are queued and written by a separate thread. A wedged USB gadget or a
 full ALSA pool blocks whoever calls into it, and the one caller that must
-never block is the tick thread: a stall there does not drop one note, it bends
-the tempo of everything that follows.
+never block is the tick thread.
 """
 from __future__ import annotations
 
@@ -32,7 +35,7 @@ try:                                    # pragma: no cover - host dependent
 except ImportError:
     mido = None                         # type: ignore[assignment]
 
-BACKENDS = ("auto", "mido", "null")
+BACKENDS = ("auto", "alsa", "mido", "null")
 # rtmidi's ALSA names carry " client:port" numbers that change across a
 # replug, so ports are matched on the name with those stripped.
 _PORT_NUMBERS = re.compile(r"\s\d+:\d+$")
@@ -354,13 +357,31 @@ class MidoMidiIO:                       # pragma: no cover - needs a host port
 def open_midi(on_input: Callable[[str, MidiEvent, int], None] | None = None,
               on_realtime: Callable[[str, int, int, int], None] | None = None,
               backend: str = "auto") -> MidiIO:
-    """Open the configured backend, degrading toward null rather than raising."""
+    """Open the configured backend, degrading toward null rather than raising.
+
+    ``auto``: alsa (native seq) → mido/rtmidi → null. Pin ``alsa`` or
+    ``mido`` in config to force one; a pinned backend that cannot open still
+    falls through so a missing package never blacks the panel.
+    """
     if backend not in BACKENDS:
         log.warning("unknown backend %r; using auto", backend)
         backend = "auto"
-    if backend in ("auto", "mido") and mido is not None:
+    if backend in ("auto", "alsa"):
         try:
-            return MidoMidiIO(on_input, on_realtime)
+            from rangerkit.midi_alsa import open_alsa_midi
+            io = open_alsa_midi(on_input, on_realtime)
+            if io is not None:
+                log.info("MIDI backend: alsa (native sequencer)")
+                return io
+        except Exception as exc:        # pragma: no cover
+            log.warning("alsa backend failed (%s); falling back", exc)
+        if backend == "alsa":
+            log.warning("alsa backend unavailable; falling back")
+    if backend in ("auto", "alsa", "mido") and mido is not None:
+        try:
+            io = MidoMidiIO(on_input, on_realtime)
+            log.info("MIDI backend: mido/rtmidi")
+            return io
         except Exception as exc:        # pragma: no cover
             log.warning("mido backend failed (%s); falling back to null", exc)
     elif backend == "mido":             # pragma: no cover
@@ -368,13 +389,20 @@ def open_midi(on_input: Callable[[str, MidiEvent, int], None] | None = None,
     return NullMidiIO()
 
 
+# Default preference for single-output apps (ChordRanger, …).
+# PiMIDI enumerates as client ``pimidi0`` with ports ``a``/``b``; Pisound as
+# ``pisound``. "Midi Through" is last so it never steals a real HAT.
+DEFAULT_PREFER: tuple[str, ...] = (
+    "pimidi0:a", "pimidi0", "pimidi", "pisound", "f_midi", "usb",
+    "midi through",
+)
+
+
 def autobind_output(midi: MidiIO, endpoint_id: str,
-                    prefer: tuple[str, ...] = ("pisound", "f_midi",
-                                               "midi through")) -> str:
+                    prefer: tuple[str, ...] = DEFAULT_PREFER) -> str:
     """Bind the first output port matching a preference, in order.
 
-    "pisound" first because on this appliance that is the DIN socket and the
-    reason the hardware exists. "Midi Through" is last precisely because it is
+    PiMIDI / Pisound first; "Midi Through" last precisely because it is
     always present and would otherwise win every time and play to nobody.
     """
     ports = [p for p in midi.scan() if not p.is_input]

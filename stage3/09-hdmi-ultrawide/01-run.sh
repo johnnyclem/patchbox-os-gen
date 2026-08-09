@@ -183,12 +183,19 @@ UDEV
 fi
 
 install -d "${ROOTFS_DIR}/usr/local/bin"
+install -d "${ROOTFS_DIR}/usr/local/sbin"
 install -m 755 files/patchbox-display-status \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-display-status"
 install -m 755 files/patchbox-touch-probe \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-touch-probe"
 install -m 755 files/patchbox-soak \
 	"${ROOTFS_DIR}/usr/local/bin/patchbox-soak"
+# On-device Waveshare 7.9 rescue (also used by patchbox-setup display set).
+# Safe to ship on every HDMI image — only rewrites boot files when run.
+if [ -f "${BASE_DIR}/scripts/fix-waveshare79-bootfs.sh" ]; then
+	install -m 755 "${BASE_DIR}/scripts/fix-waveshare79-bootfs.sh" \
+		"${ROOTFS_DIR}/usr/local/sbin/patchbox-fix-waveshare79"
+fi
 if [ -f "${BASE_DIR}/SOAK-PROFILE-A.md" ]; then
 	install -m 644 "${BASE_DIR}/SOAK-PROFILE-A.md" \
 		"${ROOTFS_DIR}/home/${FIRST_USER_NAME}/SOAK-PROFILE-A.md"

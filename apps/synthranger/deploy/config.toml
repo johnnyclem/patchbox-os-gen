@@ -28,7 +28,7 @@ projects_dir = "/var/lib/synthranger/projects"
 presets_dir = "/var/lib/synthranger/presets"
 
 [midi]
-# auto tries mido/python-rtmidi (the ALSA sequencer) and degrades to a silent
+# auto: native ALSA seq (alsa-midi) → mido/rtmidi → null. Degrades to a silent
 # null backend rather than refusing to boot. The SET screen says which one
 # is in force; each part's listen channel is on the MIX screen.
 backend = "auto"

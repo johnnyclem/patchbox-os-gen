@@ -1,0 +1,14 @@
+{
+  "name": "rangerdeck",
+  "version": "1.0.0",
+  "description": "Ranger Suite launcher (micro-rangers on Patchbox)",
+  "author": "johnnyclem",
+  "launch_mode": "auto",
+  "depends_on": [],
+  "services": [],
+  "scripts": {
+    "install": "install.sh",
+    "launch": "launch.sh",
+    "stop": "stop.sh"
+  }
+}

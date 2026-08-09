@@ -12,3 +12,4 @@ python-rtmidi==1.5.8
 
 # Development / CI
 pytest==9.1.1
+alsa-midi==1.0.4        ; platform_system == "Linux"
