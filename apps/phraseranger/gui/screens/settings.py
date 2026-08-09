@@ -20,6 +20,7 @@ PORTS_SHOWN = 5
 
 class SettingsScreen(Screen):
     title = "SET"
+    legend = "TAP a port to bind it · TAP THEME to cycle the colourway"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

@@ -6,9 +6,20 @@ rather than a tree of rect comparisons, and — more importantly — a control
 that is drawn but not registered simply cannot be pressed, which turns "the
 button does nothing" into a mistake you make once.
 
-The house style is hard: no rounded corners, no blur, a 2 px black rule on
-everything, and a 3 px offset shadow on anything raised. It reads at arm's
-length on a washed-out panel, which is the only test that matters here.
+The house style is the micro-rangers design system, and it is hard: radius 0
+everywhere, 2 px rules, no shadows, no gradients, no blur. Depth is carried
+by lightness and by the rule, never by a drop shadow — a shadow on a panel
+this contrasty reads as a smudge, and the sheet forbids it outright.
+
+Two rules do most of the work and are easy to break by accident:
+
+* **Press is geometry + inverse fill, never colour alone.** A control that
+  only changes hue on press is invisible to a player who is looking at the
+  keyboard, and indistinguishable from that control being *latched*.
+* **Selection is a cyan rule or inverse video, never a glow, and never
+  orange.** Orange is spoken for by transport state (playing / armed); if
+  selection borrowed it, a selected empty pad and a playing pad would be the
+  same picture.
 """
 from __future__ import annotations
 
@@ -99,76 +110,106 @@ def rule(surface, rect, color=None, width: int = theme.BORDER_W) -> None:
     pygame.draw.rect(surface, color or theme.BORDER, rect, width)
 
 
-def panel(surface, rect, color=None, shadow: bool = False,
-          border: bool = True, focus: bool = False) -> pygame.Rect:
-    """A raised surface: optional hard shadow, fill, black rule.
+def panel(surface, rect, color=None, border: bool = True,
+          focus: bool = False) -> pygame.Rect:
+    """A surface: fill, then the 2 px rule. No shadow — the sheet forbids it.
 
-    ``focus`` draws the HOT orange ring *outside* the black rule (micro-rangers
-    FOCUS mark). Press is a geometry drop elsewhere — never colour alone.
+    ``focus`` draws the cyan selection rule *inside* the black rule, so a
+    selected control keeps its footprint exactly. An outside ring would grow
+    the control by 6 px and shove its neighbours, which on a grid of pads is
+    a visible reflow every time focus moves.
     """
-    if shadow:
-        shade = rect.move(theme.SHADOW_OFF, theme.SHADOW_OFF)
-        surface.fill(theme.BORDER, shade)
     surface.fill(color or theme.BG_RAISED, rect)
     if border:
         rule(surface, rect)
     if focus:
-        focus_ring(surface, rect)
+        select_rule(surface, rect)
     return rect
 
 
-def focus_ring(surface, rect, width: int | None = None) -> None:
-    """HOT orange focus frame (RADIUS 0). Drawn outside the black rule."""
+def select_rule(surface, rect, width: int | None = None) -> None:
+    """The cyan selection frame (RADIUS 0), drawn inside the panel's rule.
+
+    This is the design system's *only* selection mark besides inverse video.
+    Never a glow, and never orange — orange means playing.
+    """
     w = width if width is not None else theme.FOCUS_W
-    ring = rect.inflate(w * 2, w * 2)
-    pygame.draw.rect(surface, theme.HOT, ring, w)
+    pygame.draw.rect(surface, theme.HOT, rect.inflate(-w, -w), w)
+
+
+#: Retired name for :func:`select_rule`, kept so older screens keep drawing.
+focus_ring = select_rule
+
+
+#: Centre glyphs. The sheet's mark system distinguishes what a pad *holds*
+#: (scene ● / clip ■) from what it is *doing*, which is carried by the fill.
+MARK_SCENE = "●"
+MARK_CLIP = "■"
+
+
+def pad_face(state: str, hue=None):
+    """The fill for one pad state — the sheet's states matrix, in one place.
+
+    Kept separate from :func:`pad` because several screens draw their own pad
+    bodies (step grids, matrices) and must not re-derive these by eye.
+    """
+    hue = hue or theme.ACCENT
+    return {
+        # empty: surface fill, dim rule — present, but holding nothing.
+        "empty": theme.BG_SUNKEN,
+        # filled: well fill, and the caller supplies a mark.
+        "filled": theme.BG_RAISED,
+        "stopped": theme.BG_RAISED,
+        # queued/armed: orange *dimmed*, so it reads as "about to" next to a
+        # pad that already is.
+        "queued": theme.ACCENT2,
+        "armed": theme.ACCENT2,
+        # playing: full orange fill, inverse mark.
+        "playing": hue,
+        "recording": theme.DANGER,
+        # muted: dimmed, never hidden.
+        "muted": theme.dim(theme.BG_RAISED, 0.5),
+        # pressed: inverse fill — geometry, not colour.
+        "pressed": theme.BG_PRESS,
+    }.get(state, theme.BG_RAISED)
 
 
 def pad(surface, rect, *, face=None, state: str = "empty",
         hue=None, label: str = "", sub: str = "",
-        chip=None, mark: str = "") -> pygame.Rect:
-    """A micro-rangers pad cell — EMPTY / STOPPED / QUEUED / PLAYING / …
+        chip=None, mark: str = "", selected: bool = False) -> pygame.Rect:
+    """One pad cell, drawn to the sheet's states matrix.
 
-    Press is geometry (caller passes face=BG_PRESS); colour alone never means
-    pressed. ``mark`` is a centre glyph (▶ ■ ●).
+    ``state`` is one of empty / filled / stopped / queued / armed / playing /
+    recording / muted / pressed. ``selected`` is orthogonal to all of them —
+    a pad can be selected *and* playing, and the two marks must not compete,
+    which is why one is a fill and the other a rule.
+
+    Press is geometry (state="pressed", or the caller passing ``face``);
+    colour alone never means pressed.
     """
-    hue = hue or theme.ACCENT
     if face is None:
-        face = {
-            "empty": theme.BG_SUNKEN,
-            "stopped": theme.BG_RAISED,
-            "queued": theme.BG_RAISED,
-            "playing": theme.blend(theme.BG_RAISED, hue, 0.72),
-            "recording": theme.blend(theme.BG_RAISED, theme.DANGER, 0.75),
-            "armed": theme.BG_RAISED,
-            "pressed": theme.BG_PRESS,
-        }.get(state, theme.BG_RAISED)
-    # Queued = focus ring (awaiting launch). Playing is fill alone; the caller
-    # adds focus_ring when the pad *owns* the panel (SHOWN).
-    panel(surface, rect, face, shadow=state in ("playing", "recording"),
-          focus=state == "queued")
+        face = pad_face(state, hue)
+    panel(surface, rect, face, focus=selected)
     if chip is not None:
         badge = pygame.Rect(rect.x + 4, rect.y + 4, 14, 10)
-        surface.fill(chip, badge)
+        surface.fill(theme.dim(chip) if state == "muted" else chip, badge)
         rule(surface, badge, width=1)
     ink = theme.ink_for(face)
+    if state == "muted":
+        ink = theme.blend(ink, face, 0.45)
     if label:
         title = pygame.Rect(rect.x + 6, rect.y + (18 if chip else 6),
                             rect.width - 12, 22)
-        text(surface, label, title, 16, ink, bold=True, display=True,
-             align="left")
+        text(surface, label, title, theme.TYPE_TITLE - 2, ink, bold=True,
+             display=True, align="left")
     if sub:
         line = pygame.Rect(rect.x + 6, rect.bottom - 36, rect.width - 12, 16)
-        text(surface, sub, line, 11, theme.blend(ink, face, 0.35),
-             align="left")
+        text(surface, sub, line, theme.TYPE_LABEL,
+             theme.blend(ink, face, 0.35), align="left")
     if mark:
         body = pygame.Rect(rect.x, rect.y + rect.height // 3,
                            rect.width, rect.height // 2)
         text(surface, mark, body, 22, ink, bold=True, display=True)
-    if state == "armed":
-        # Corner tick (design: top-right mark).
-        corner = pygame.Rect(rect.right - 10, rect.y + 4, 6, 6)
-        surface.fill(theme.HOT, corner)
     return rect
 
 
@@ -200,20 +241,29 @@ def text(surface, value: str, rect, size: int = 16, color=None,
 
 
 def button(surface, hits: HitMap, key: str, rect, label: str,
-           size: int = 15, active: bool = False, pressed: bool = False,
-           color=None, disabled: bool = False, display: bool = True,
-           sub: str = "", kind: str = "neut", focus: bool = False
-           ) -> pygame.Rect:
+           size: int = theme.TYPE_TITLE - 3, active: bool = False,
+           pressed: bool = False, color=None, disabled: bool = False,
+           display: bool = True, sub: str = "", kind: str = "neut",
+           focus: bool = False) -> pygame.Rect:
     """The standard control.
 
-    ``kind`` follows the component sheet: neut / prim / dang / dis.
-    ``pressed`` is a geometry drop (BG_PRESS), never a colour swap alone.
+    ``kind`` follows the component sheet: neut / prim / solo / mute / dang /
+    dis. ``solo`` and ``mute`` exist as kinds rather than as a colour the
+    caller passes because the sheet is specific about both — solo is *green
+    emphasis*, mute *dims and never hides* — and eight screens each picking a
+    red for M is how the suite drifted apart in the first place.
+
+    ``pressed`` is an inverse fill (BG_PRESS), never a colour swap alone.
     """
     if disabled or kind == "dis":
         face = theme.BG_SUNKEN
         disabled = True
     elif pressed:
         face = theme.BG_PRESS
+    elif kind == "solo":
+        face = theme.OK if active else theme.BG_RAISED
+    elif kind == "mute":
+        face = theme.dim(theme.BG_RAISED, 0.5) if active else theme.BG_RAISED
     elif active or kind == "prim":
         face = color or theme.ACCENT
     elif kind == "dang":
@@ -222,6 +272,8 @@ def button(surface, hits: HitMap, key: str, rect, label: str,
         face = theme.BG_RAISED
     panel(surface, rect, face, focus=focus)
     ink = theme.TEXT_MUTED if disabled else theme.ink_for(face)
+    if kind == "mute" and active:
+        ink = theme.blend(ink, face, 0.45)
     if sub:
         top = pygame.Rect(rect.x, rect.y + 2, rect.width, rect.height * 3 // 5)
         bottom = pygame.Rect(rect.x, rect.bottom - rect.height * 2 // 5,
@@ -235,40 +287,179 @@ def button(surface, hits: HitMap, key: str, rect, label: str,
     return rect
 
 
-def lcd(surface, rect, value: str, size: int = 30, label: str = "",
-        color=None) -> pygame.Rect:
-    """A readout in its own black well. Caption in LCD_DIM, value in LCD cyan."""
+def _fits(size: int, height: int) -> int:
+    """The largest size at or below *size* whose line box fits *height*.
+
+    Asked of the font rather than estimated: a point size is not a pixel
+    height, and guessing the ratio is how a caption and its value ended up
+    overlapping in every well shorter than about 40 px.
+    """
+    while size > 8 and theme.font(size, bold=True).get_height() > height:
+        size -= 1
+    return size
+
+
+def lcd(surface, rect, value: str, size: int = theme.TYPE_VALUE,
+        label: str = "", color=None, selected: bool = False) -> pygame.Rect:
+    """A readout in its own well: caption above, value in cyan.
+
+    The caption is *permanent*, not a tooltip and not a hover: a player who
+    has to press a control to find out what it is has already changed it. Any
+    continuous parameter should be drawn with ``label`` set, which is what
+    :func:`param` enforces.
+
+    Values are cyan on the well, never pure white on black — white on black
+    at this size blooms on an LCD and the digits smear into each other.
+    """
     surface.fill(theme.BG_LCD, rect)
     rule(surface, rect)
     body = rect
     if label:
-        head = pygame.Rect(rect.x, rect.y + 2, rect.width, 14)
-        text(surface, label, head, 10, theme.DISPLAY_DIM, display=True)
-        body = pygame.Rect(rect.x, rect.y + 12, rect.width, rect.height - 12)
-    text(surface, value, body, size, color or theme.DISPLAY, bold=True)
+        # Split proportionally, not at a fixed 14 px. A well only 28 px tall
+        # gave the caption half its height and then centred a 20 px value in
+        # what was left, so the two collided — the caption was drawn, which
+        # the rule requires, and unreadable, which defeats it.
+        head_h = max(9, min(14, rect.height // 3))
+        head = pygame.Rect(rect.x, rect.y + 1, rect.width, head_h)
+        text(surface, label, head, min(theme.TYPE_MICRO, head_h),
+             theme.DISPLAY_DIM, display=True)
+        body = pygame.Rect(rect.x, rect.y + head_h, rect.width,
+                           rect.height - head_h)
+    text(surface, value, body, _fits(size, body.height),
+         color or theme.DISPLAY, bold=True)
+    if selected:
+        select_rule(surface, rect)
     return rect
+
+
+def param(surface, rect, caption: str, value: str,
+          size: int = theme.TYPE_VALUE, selected: bool = False,
+          color=None) -> pygame.Rect:
+    """A continuous parameter: caption over value, always both.
+
+    This is :func:`lcd` with the caption made non-optional, and it is the
+    control every rate / gate / level / octave readout should be using. The
+    separate name is the point — it is impossible to draw one of these
+    without its caption.
+    """
+    return lcd(surface, rect, value, size=size, label=caption,
+               color=color, selected=selected)
 
 
 def toast(surface, rect, value: str) -> pygame.Rect:
-    """LCD voice strip — black well, cyan type (MIDI LEARN · …)."""
+    """Transient voice strip — well ground, cyan type (MIDI LEARN · …)."""
     surface.fill(theme.BG_LCD, rect)
     rule(surface, rect)
-    text(surface, value, rect, 14, theme.DISPLAY, bold=True, display=True,
-         align="left", pad=12)
+    text(surface, value, rect, theme.TYPE_CAPTION, theme.DISPLAY, bold=True,
+         display=True, align="left", pad=12)
     return rect
 
 
-def chip(surface, rect, label: str, color=None, active: bool = False) -> pygame.Rect:
-    """Small status chip (UPDATE · TAP, SC 1–5/8, …)."""
+def chip(surface, rect, label: str, color=None, active: bool = False,
+         muted: bool = False, selected: bool = False) -> pygame.Rect:
+    """Small status chip (track name, UPDATE · TAP, SC 1–5/8, …).
+
+    ``muted`` dims the chip rather than dropping it, so a muted track keeps
+    its place and its name in the row — the sheet's mute rule, applied to the
+    one element that says which track you are looking at.
+    """
     face = color or (theme.ACCENT if active else theme.BG_LCD)
+    if muted:
+        face = theme.dim(face)
     surface.fill(face, rect)
     rule(surface, rect)
-    text(surface, label, rect, 12, theme.ink_for(face), bold=True, display=True)
+    ink = theme.ink_for(face)
+    text(surface, label, rect, theme.TYPE_LABEL,
+         theme.blend(ink, face, 0.4) if muted else ink,
+         bold=True, display=True)
+    if selected:
+        select_rule(surface, rect)
+    return rect
+
+
+def ribbon(surface, rect, screen: str, clock: str = "", tempo: str = "",
+           playing: bool = False, recording: bool = False) -> pygame.Rect:
+    """The status band: which screen you are on, the clock, the tempo.
+
+    Three fixed slots, always in this order and always the same width, so the
+    eye learns where to land: name hard left, transport state and bar:beat:
+    tick in the middle, BPM hard right. It is the one piece of chrome that
+    never changes between screens, which is exactly what makes it readable
+    without being read.
+    """
+    surface.fill(theme.BG, rect)
+    rule(surface, rect)
+    inner = rect.inflate(-8, -4)
+    text(surface, screen, inner, theme.TYPE_TITLE, theme.TEXT, bold=True,
+         display=True, align="left")
+    if clock:
+        mark = MARK_CLIP if not playing else "▶"
+        colour = (theme.DANGER if recording else
+                  theme.ACCENT if playing else theme.TEXT_DIM)
+        state = pygame.Rect(inner.centerx - 90, inner.y, 24, inner.height)
+        text(surface, mark, state, theme.TYPE_CAPTION, colour, bold=True)
+        body = pygame.Rect(state.right, inner.y, 160, inner.height)
+        text(surface, clock, body, theme.TYPE_CAPTION, theme.DISPLAY,
+             bold=True, align="left")
+    if tempo:
+        text(surface, tempo, inner, theme.TYPE_CAPTION, theme.DISPLAY,
+             bold=True, align="right")
+    return rect
+
+
+def tab_rail(surface, hits: HitMap, rects, titles, active: int) -> None:
+    """The tab rail — down the right edge when wide, across the bottom when
+    not. ``Layout`` already decided which and handed over the rects.
+
+    The current tab is drawn as inverse video (cyan ground, dark ink), which
+    is the design system's selection mark. It is emphatically not orange:
+    on a screen where a pad is playing, an orange tab would read as a second
+    piece of transport state.
+
+    Shared rather than copied into each app because it was already identical
+    in all seven, and a tab rail that drifts between rangers is the single
+    most obvious way for the suite to stop feeling like one instrument.
+    """
+    for index, (rect, title) in enumerate(zip(rects, titles)):
+        face = theme.SELECT if index == active else theme.BG_RAISED
+        panel(surface, rect, face)
+        text(surface, title, rect, theme.TYPE_CAPTION, theme.ink_for(face),
+             bold=True, display=True)
+        hits.add(f"tab{index}", rect)
+
+
+def message_strip(surface, content: pygame.Rect, copy: str) -> pygame.Rect:
+    """The transient notice ("SAVED", "POT A = CC 74"), drawn as a toast.
+
+    In a well with cyan type, not on an orange panel: orange is transport
+    state, and a notice that borrows it makes the panel look like it started
+    playing every time you save a file.
+    """
+    rect = pygame.Rect(content.x + 8, content.bottom - 34,
+                       min(420, content.width - 16), 26)
+    return toast(surface, rect, copy)
+
+
+def legend(surface, rect, copy: str) -> pygame.Rect:
+    """The legend row: what the controls do, right now, on this screen.
+
+    Permanent and contextual — it reflects the *focused* control, so a
+    secondary action on long-press is discoverable without a manual and
+    without a dedicated button. Dim type on the ground, never a well: it is
+    reference, not a value, and it must not compete with the readouts.
+    """
+    surface.fill(theme.BG, rect)
+    text(surface, copy, rect, theme.TYPE_CAPTION, theme.TEXT_DIM,
+         display=False, align="left", pad=10)
     return rect
 
 
 def meter(surface, rect, value: float, color=None) -> None:
-    """A horizontal bar, 0..1, drawn as a filled proportion of a sunken well."""
+    """A horizontal bar, 0..1, drawn as a filled proportion of a sunken well.
+
+    A meter is *output* — it shows what is coming out, and pressing it does
+    nothing. It is deliberately not registered in any hit map.
+    """
     surface.fill(theme.BG_SUNKEN, rect)
     filled = pygame.Rect(rect.x, rect.y, int(rect.width * max(0.0, min(
         1.0, value))), rect.height)
@@ -315,7 +506,8 @@ def column(rect: pygame.Rect, count: int, gap: int = theme.PAD_GAP
 def section_head(surface, rect, label: str) -> pygame.Rect:
     """A titled band above a group of controls."""
     surface.fill(theme.BG, rect)
-    text(surface, label, rect, 11, theme.TEXT_DIM, display=True, align="left")
+    text(surface, label, rect, theme.TYPE_LABEL, theme.TEXT_DIM, display=True,
+         align="left")
     return rect
 
 
@@ -334,7 +526,8 @@ class Stepper:
     width: int = 44
 
     def draw(self, surface, hits: HitMap, rect: pygame.Rect,
-             pressed: str | None = None, size: int = 16) -> None:
+             pressed: str | None = None, size: int = theme.TYPE_TITLE,
+             selected: bool = False) -> None:
         minus = pygame.Rect(rect.x, rect.y, self.width, rect.height)
         plus = pygame.Rect(rect.right - self.width, rect.y, self.width,
                            rect.height)
@@ -342,15 +535,11 @@ class Stepper:
                              plus.left - minus.right - 4, rect.height)
         button(surface, hits, f"{self.key}-", minus, "−", size + 2,
                pressed=pressed == f"{self.key}-")
-        panel(surface, middle, theme.BG_SUNKEN)
-        if self.label:
-            head = pygame.Rect(middle.x, middle.y + 1, middle.width, 12)
-            text(surface, self.label, head, 10, theme.TEXT_DIM, display=True)
-            body = pygame.Rect(middle.x, middle.y + 11, middle.width,
-                               middle.height - 12)
-        else:
-            body = middle
-        text(surface, self.value, body, size, theme.TEXT, bold=True)
+        # The value sits in a well with its caption above it: a stepper is a
+        # continuous parameter, and the sheet wants caption-over-value on
+        # every one of those.
+        param(surface, middle, self.label, self.value, size=size,
+              selected=selected)
         button(surface, hits, f"{self.key}+", plus, "+", size + 2,
                pressed=pressed == f"{self.key}+")
 

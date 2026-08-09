@@ -81,11 +81,16 @@ def test_every_screen_draws_without_raising(app):
 
 
 def test_grid_cells_hold_the_touch_floor_on_the_bar(app):
+    """A clip is a direct-action target: it fires on press, so it takes the
+    design system's larger floor (40x36). The floor is deliberately not
+    square — the bar is 400 px tall and a clip grid is wide by nature, so
+    demanding 40 in *both* axes would cost a row of scenes to buy width
+    nothing needs."""
     app.tab = 0
     _frame(app)
     cell = app.screens[0].hits.rect_for("c:0:0")
     assert cell is not None
-    assert min(cell.width, cell.height) >= 40    # 44 px pad minus borders
+    assert theme.touch_ok(cell), f"clip cell {cell.size} is below the floor"
 
 
 @pytest.mark.parametrize("size", GEOMETRIES)

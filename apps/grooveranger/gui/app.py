@@ -21,7 +21,7 @@ import pygame
 from rangerkit import enginebase as base
 from rangerkit.gui import theme, touch
 from rangerkit.gui.widgets import HitMap, button, close_badge, column, lcd, \
-    panel, row, text
+    legend, message_strip, panel, row, tab_rail
 
 from core import commands as cmd
 from core.commands import GrSnapshot
@@ -98,7 +98,7 @@ class App:
         self.clock = pygame.time.Clock()
 
         self.layout = theme.Layout.for_size(size, len(SCREENS),
-                                            close_button=deck)
+                                            close_button=deck, legend=True)
         self.chrome = HitMap()
         self.screens = [screen(self, self.layout.content)
                         for screen in SCREENS]
@@ -316,6 +316,8 @@ class App:
         screen.draw(self.surface)
         self._draw_transport(snapshot)
         self._draw_tabs()
+        if self.layout.legend is not None:
+            legend(self.surface, self.layout.legend, screen.legend_copy())
         if self.layout.close is not None:
             close_badge(self.surface, self.chrome, self.layout.close)
         self._draw_message()
@@ -346,24 +348,13 @@ class App:
                color=theme.ACCENT2,
                sub="queued" if snapshot.fill_queued else "")
         button(self.surface, self.chrome, "panic", cells[4], "PANIC", 12,
-               color=theme.DANGER)
+               kind="dang")
 
     def _draw_tabs(self) -> None:
-        for index, rect in enumerate(self.layout.tabs):
-            screen = self.screens[index]
-            active = index == self.tab
-            face = theme.SELECT if active else theme.BG_RAISED
-            panel(self.surface, rect, face)
-            text(self.surface, screen.title, rect, 14, theme.ink_for(face),
-                 bold=True, display=True)
-            self.chrome.add(f"tab{index}", rect)
+        tab_rail(self.surface, self.chrome, self.layout.tabs,
+                 [s.title for s in self.screens], self.tab)
 
     def _draw_message(self) -> None:
         if not self._message or self.now_ms() > self._message_until:
             return
-        content = self.layout.content
-        rect = pygame.Rect(content.x + 8, content.bottom - 34,
-                           min(420, content.width - 16), 26)
-        panel(self.surface, rect, theme.ACCENT2, shadow=True)
-        text(self.surface, self._message, rect, 14,
-             theme.ink_for(theme.ACCENT2), bold=True, display=True)
+        message_strip(self.surface, self.layout.content, self._message)

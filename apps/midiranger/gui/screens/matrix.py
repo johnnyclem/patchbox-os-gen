@@ -19,6 +19,7 @@ HEAD_H = 34
 
 class MatrixScreen(Screen):
     title = "MATRIX"
+    legend = "TAP a cell to route that source to that destination"
 
     def on_tap(self, key: str) -> list:
         if key == "clear":
@@ -72,11 +73,14 @@ class MatrixScreen(Screen):
                     - x
                 cell = pygame.Rect(x + 2, y + 2, width - 6, height - 6)
                 on = (src, dst) in active
+                # Cyan, not orange: the design system paints an active route
+                # cyan (§ROUTE) and keeps orange for transport state. A patch
+                # bay full of orange read as a patch bay full of playing.
                 button(surface, self.hits, f"x:{src}:{dst}", cell,
                        "●" if on else "", 18, active=on,
                        pressed=self.is_pressed(f"x:{src}:{dst}"),
-                       color=theme.ACCENT if on else None, display=False)
+                       color=theme.ACCENT3 if on else None, display=False)
         # A clear control beats eight taps when re-patching between songs.
         clear = pygame.Rect(body.x, body.y, LABEL_W - 4, HEAD_H - 4)
         button(surface, self.hits, "clear", clear, "CLEAR", 12,
-               color=theme.DANGER)
+               kind="dang")

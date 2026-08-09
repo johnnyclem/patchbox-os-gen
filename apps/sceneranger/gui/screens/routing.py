@@ -22,6 +22,7 @@ STEPPED = ("chan", "loops", "prob", "vel", "trans", "slot")
 
 class RoutingScreen(Screen):
     title = "ROUTING"
+    legend = "TAP a destination to bind it · − / + step the channel"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -137,7 +138,7 @@ class RoutingScreen(Screen):
             surface, self.hits, cells[1], self._pressed)
         button(surface, self.hits, "mute", cells[2],
                "MUTED" if view.muted else "MUTE", 13,
-               active=view.muted, color=theme.DANGER)
+               kind="mute", active=view.muted)
 
     def _inspector(self, surface, rect, s) -> None:
         clip = self._clip_view()
@@ -166,5 +167,5 @@ class RoutingScreen(Screen):
                 width=34).draw(surface, self.hits, bottom[1],
                                self._pressed, size=12)
         button(surface, self.hits, "clearclip", bottom[2], "CLEAR", 11,
-               color=theme.DANGER,
+               kind="dang",
                sub=f"{clip.bars}b · {clip.notes}n")

@@ -21,6 +21,7 @@ STEPPED = ("tlback", "tlfwd")
 
 class SeedsScreen(Screen):
     title = "SEEDS"
+    legend = "TAP a seed to recall it · HOLD a seed to save over it"
 
     # --- input ----------------------------------------------------------------
     def on_tap(self, key: str) -> list:

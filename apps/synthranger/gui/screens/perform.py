@@ -24,6 +24,7 @@ STEPPED = ("morph", "oct")
 
 class PerformScreen(Screen):
     title = "PERFORM"
+    legend = "TAP a pad to play it · − / + step the macros"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

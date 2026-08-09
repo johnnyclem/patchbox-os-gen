@@ -19,6 +19,7 @@ STEPPED = ("chan", "tbars", "feed", "dens", "hum")
 
 class RoutingScreen(Screen):
     title = "ROUTING"
+    legend = "TAP a destination to bind it · − / + step the feel"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

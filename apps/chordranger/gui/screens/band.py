@@ -26,6 +26,7 @@ PATTERN_NAMES = tuple(BASS_PATTERNS)
 
 class BandScreen(Screen):
     title = "BAND"
+    legend = "TAP MUTE to silence a part · − / + step OCT and VEL"
 
     # --- input ---------------------------------------------------------------
     def on_tap(self, key: str) -> list:
@@ -124,7 +125,7 @@ class BandScreen(Screen):
             part.active > 0, color=theme.ACCENT, radius=4)
         button(surface, self.hits, f"mute:{part.id}", cells[1],
                "MUTE" if not part.muted else "MUTED", 12,
-               active=part.muted, color=theme.DANGER)
+               kind="mute", active=part.muted)
         Stepper(f"oct{part.id}:", "OCT", f"{part.octave:+d}", width=26).draw(
             surface, self.hits, cells[2], self._pressed, size=13)
         Stepper(f"vel{part.id}:", "VEL", str(part.velocity), width=26).draw(

@@ -41,6 +41,7 @@ SUGGESTION_ROWS = 6
 
 class ChordScreen(Screen):
     title = "CHORD"
+    legend = "TAP a degree to add or remove it · − / + step the value"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -199,7 +200,7 @@ class ChordScreen(Screen):
                active=self._dirty(), color=theme.ACCENT2,
                pressed=self.is_pressed("write"))
         button(surface, self.hits, "revert", actions[1], "CANCEL", 14,
-               disabled=not self._dirty(), color=theme.DANGER,
+               disabled=not self._dirty(), kind="dang",
                pressed=self.is_pressed("revert"))
         notes = (voice(chord, self._spec()) if chord else ())
         text(surface, " ".join(note_label(n) for n in notes[:6]) or "—",
@@ -217,7 +218,7 @@ class ChordScreen(Screen):
             cell = cells[degree]
             on = degree in present
             face = theme.ACCENT if on else theme.BG_RAISED
-            panel(surface, cell, face, shadow=not on)
+            panel(surface, cell, face)
             ink = theme.ink_for(face)
             text(surface, DEGREE_NAMES[degree],
                  pygame.Rect(cell.x, cell.y + 4, cell.width,
@@ -278,8 +279,8 @@ class ChordScreen(Screen):
                 panel(surface, cell, theme.BG_SUNKEN)
                 continue
             pick = self._suggestions[index]
-            panel(surface, cell, theme.BG_SUNKEN,
-                  shadow=self.is_pressed(f"sug{index}"))
+            panel(surface, cell, theme.BG_PRESS
+                  if self.is_pressed(f"sug{index}") else theme.BG_SUNKEN)
             text(surface, pick.symbol,
                  pygame.Rect(cell.x, cell.y, cell.width // 2, cell.height),
                  20, theme.TEXT, bold=True, align="left")

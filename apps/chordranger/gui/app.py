@@ -29,8 +29,8 @@ from gui.screens.chord import ChordScreen
 from gui.screens.perform import PerformScreen
 from gui.screens.settings import SettingsScreen
 from gui.screens.song import SongScreen
-from gui.widgets import HitMap, button, close_badge, column, lcd, panel, \
-    row, text
+from gui.widgets import HitMap, button, close_badge, column, lcd, \
+    legend, message_strip, panel, row, tab_rail, text
 from rangerkit.gui import touch
 
 log = logging.getLogger("chordranger.gui")
@@ -110,7 +110,7 @@ class App:
         self.clock = pygame.time.Clock()
 
         self.layout = theme.Layout.for_size(size, len(SCREENS),
-                                            close_button=deck)
+                                            close_button=deck, legend=True)
         self.chrome = HitMap()
         self.screens = [screen(self, self.layout.content)
                         for screen in SCREENS]
@@ -342,6 +342,8 @@ class App:
         screen.draw(self.surface)
         self._draw_transport(snapshot)
         self._draw_tabs()
+        if self.layout.legend is not None:
+            legend(self.surface, self.layout.legend, screen.legend_copy())
         if self.layout.close is not None:
             close_badge(self.surface, self.chrome, self.layout.close)
         self._draw_message()
@@ -387,26 +389,13 @@ class App:
         text(self.surface, section, cells[4], 14, theme.TEXT, bold=True,
              display=True)
         button(self.surface, self.chrome, "panic", cells[5], "PANIC", 12,
-               color=theme.DANGER)
+               kind="dang")
 
     def _draw_tabs(self) -> None:
-        """Tab rail. Down the right edge when wide, across the bottom when
-        not — ``Layout`` already decided which, and handed over the rects."""
-        for index, rect in enumerate(self.layout.tabs):
-            screen = self.screens[index]
-            active = index == self.tab
-            face = theme.SELECT if active else theme.BG_RAISED
-            panel(self.surface, rect, face)
-            text(self.surface, screen.title, rect, 14, theme.ink_for(face),
-                 bold=True, display=True)
-            self.chrome.add(f"tab{index}", rect)
+        tab_rail(self.surface, self.chrome, self.layout.tabs,
+                 [s.title for s in self.screens], self.tab)
 
     def _draw_message(self) -> None:
         if not self._message or self.now_ms() > self._message_until:
             return
-        content = self.layout.content
-        rect = pygame.Rect(content.x + 8, content.bottom - 34,
-                           min(420, content.width - 16), 26)
-        panel(self.surface, rect, theme.ACCENT2, shadow=True)
-        text(self.surface, self._message, rect, 14,
-             theme.ink_for(theme.ACCENT2), bold=True, display=True)
+        message_strip(self.surface, self.layout.content, self._message)

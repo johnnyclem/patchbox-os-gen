@@ -20,6 +20,8 @@ STEPPED = ("bars",)
 
 class ArrangeScreen(Screen):
     title = "ARRANGE"
+    legend = ("TAP a scene to add it · HOLD for its bars · "
+              "TAP an entry to drop it")
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -74,10 +76,10 @@ class ArrangeScreen(Screen):
             surface, self.hits, cells[1], self._pressed)
         controls = row(cells[2], 2, gap=5)
         button(surface, self.hits, "chain", controls[0],
-               "CHAIN ON" if not s.chain_on else "CHAIN OFF", 13,
+              "CHAIN ON" if not s.chain_on else "CHAIN OFF", 13,
                active=s.chain_on, color=theme.ACCENT)
         button(surface, self.hits, "clearchain", controls[1], "CLEAR", 12,
-               color=theme.DANGER)
+               kind="dang")
 
         head = pygame.Rect(chain_col.x, chain_col.y, chain_col.width, 18)
         section_head(surface, head, "THE CHAIN · TAP AN ENTRY TO DROP IT")

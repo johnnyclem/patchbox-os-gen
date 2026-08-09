@@ -720,47 +720,66 @@ pad, A ↔ B patch morph on one knob:
 
 All eight panels above are drawn from one set of tokens in
 [`apps/rangerkit/gui/theme.py`](apps/rangerkit/gui/theme.py) and one set of
-components in [`gui/widgets.py`](apps/rangerkit/gui/widgets.py). The scheme is
-not a taste call — it is what survives the reference display, a 1280×400 HDMI
-bar with a heavy blue cast and a shallow black, on which three near-black
-surfaces all collapse into the same washed navy and a filled pad becomes
-indistinguishable from an empty one at arm's length. (ChordRanger predates
-rangerkit and keeps its own engine, but its `gui/theme.py` and `gui/widgets.py`
-are now re-export shims onto the shared ones, so it moves with the family.)
+components in [`gui/widgets.py`](apps/rangerkit/gui/widgets.py), implementing
+the design system of record at
+[`docs/design/UI-UX-SPEC.md`](docs/design/UI-UX-SPEC.md). That spec is this
+repo's copy of the micro-rangers master sheet: the *language* is inherited in
+full, the 320×240 layouts are not. (ChordRanger predates rangerkit and keeps
+its own engine, but its `gui/theme.py` and `gui/widgets.py` are now re-export
+shims onto the shared ones, so it moves with the family.)
 
- * **Separate surfaces by lightness against a light ground**, not by hue.
-   `BG` (panel face) / `BG_RAISED` (button rest) / `BG_SUNKEN` (empty well) /
-   `BG_PRESS` read apart even on a bad LCD.
- * **Every rule is 2 px of true black, `RADIUS 0`.** A black line is the one
-   thing a bad panel still renders exactly. Shadows are a hard 2 px offset,
-   never a blur.
- * **Numbers live in black LCD wells** (`bg_lcd`), cyan value type over a dim
-   cyan caption — the `lcd()` widget. Values are set in a monospace so digits
-   do not shift width as they count; headings, buttons and tabs are a
-   grotesque, always upper case.
- * **Focus is HOT orange** (`#E85D04`), a 3 px ring drawn *outside* the black
-   rule. Semantics hold across every colourway: `ACCENT` is play/active,
-   `ACCENT2` is arm/record/queued, `ACCENT3` is the cool chip, `DANGER` is
-   stop/delete.
- * **Never colour alone for press.** A pressed control drops geometry as well,
-   so the state is legible in sunlight and to a colour-blind eye. Concepts are
-   coloured *at rest* — PLAY is play-coloured whether or not it is playing —
-   so the finger aims by hue and the *fill* means latched.
- * **Type ink is asked for, not assumed.** `ink_for(fill)` picks black or white
+ * **Colour is state, and each hue has exactly one job.** Orange `#FF6B2C` is
+   playing (dimmed: armed), cyan `#56D6FF` is selection, active routes and
+   every value in a well, green `#3DFF8A` is solo, red `#FF3D4A` is
+   stop/delete/panic, yellow `#FFD12A` is warn. A colourway may re-tune a hue
+   so it survives its ground; it may not reassign what a hue means.
+ * **`RADIUS 0`, 2 px rules, no shadows, no gradients.** Depth is lightness
+   and the rule. There is no shadow token and `panel()` does not take the
+   keyword, so a stale `shadow=True` is a `TypeError`, not a silent no-op.
+ * **Values live in wells** (`bg_lcd` `#0D1A20`), cyan value type over a dim
+   cyan caption — the `lcd()`/`param()` widgets. The caption is *permanent*:
+   nothing is hovered on a touch panel, so a caption that is not always drawn
+   is a caption nobody ever sees. Never pure white on black — it blooms.
+ * **Selection is a cyan rule or inverse video** — never a glow, never orange.
+   A pad is routinely selected *and* playing, so one must be a fill and the
+   other a rule.
+ * **Never colour alone for press.** A pressed control takes an inverse fill,
+   so the state is legible in sunlight and to a colour-blind eye — and cannot
+   be confused with that control being latched.
+ * **Mute dims and never hides**; solo is green, and once anything is soloed
+   the rest dim, which is the only way to see that a silent track is silent
+   *because* of solo.
+ * **Type ink is asked for, not assumed.** `ink_for(fill)` picks dark or light
    by luminance, which is what keeps a re-tuned hue or a flipped ground from
    quietly producing unreadable labels.
- * **Colourways are swapped whole, never patched**: `INDUSTRIAL` (default),
-   `NIGHT`, `MONO`, `DUSK`. Nothing in a GUI may capture a colour at import
-   time — `theme.apply()` rebinds the names in place, and a captured value
-   would keep the old palette forever.
+ * **Colourways are swapped whole, never patched**: `INDUSTRIAL` (default, the
+   sheet's palette), `NIGHT`, and `DAYLIGHT` — the light scheme this suite
+   shipped with before, kept because its finding stands: a panel with a heavy
+   blue cast and a shallow black collapses INDUSTRIAL's three near-black
+   surfaces into one washed navy. If that happens on a unit, `theme =
+   "daylight"` in the app config is the whole fix. (`mono` and `dusk` were
+   folded into `NIGHT` and still resolve.) Nothing in a GUI may capture a
+   colour at import time — `theme.apply()` rebinds the names in place, and a
+   captured value would keep the old palette forever.
 
 Geometry adapts rather than scales. On the bar, vertical space is the scarce
 resource, so the chrome turns sideways — transport rail down the left (150 px),
 tab rail down the right (112 px), and the content keeps all 400 px of height.
 Portrait and 800×480 panels get the ordinary top-transport / bottom-tabs stack
 instead. Three geometries are resolved by one `Layout` class (1280×400,
-800×480, 480×800), every drawn control is a registered hit target of at least
-44 px, and the GUI tests run all three.
+800×480, 480×800) and the GUI tests run all three. Hit targets have two floors,
+because the system has two classes of control: direct-action (fires on press)
+is 40×36, selectable (takes focus, edited after) is 28×24 — `theme.touch_ok()`
+rather than an open-coded number.
+
+The bottom of every content band is a **legend row**: permanent copy naming
+what the controls do here, including the secondary action on hold. It is how
+long-press is discovered — without it, "hold a pad to mute it" is a feature
+only its author knows about — and it names *this* panel's controls (TAP, HOLD,
+− / +), never the master sheet's ENC1/ENC2, which this hardware does not have.
+
+`apps/rangerkit/tests/test_design_system.py` asserts the checkable half of all
+of the above, so a divergence is a red build rather than a discovery.
 
 One consequence worth knowing before you debug a panel that paints perfectly
 and ignores every tap: capacitive USB-HID panels emit `FINGER*` events only,

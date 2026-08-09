@@ -15,7 +15,9 @@
 width = 1280
 height = 400
 fullscreen = true
-# industrial (light, tuned for the washed-out bar LCD) | mono | dusk
+# industrial (the design system's palette, dark) | night | daylight
+# daylight is the old light scheme — use it if this panel's black is
+# too shallow to separate industrial's three near-black surfaces.
 theme = "industrial"
 fps = 60
 

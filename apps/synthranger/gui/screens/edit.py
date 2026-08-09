@@ -29,6 +29,7 @@ _ENV_KEYS = {"aa": ("amp_env", 0), "ad": ("amp_env", 1),
 
 class EditScreen(Screen):
     title = "EDIT"
+    legend = "TAP a page to open it · − / + step the selected parameter"
 
     # --- input ----------------------------------------------------------------
     def on_tap(self, key: str) -> list:
@@ -200,7 +201,7 @@ class EditScreen(Screen):
                       f"{patch['lfo_depth']:.2f}", size=11, width=24)
         button(surface, self.hits, "ldest", lfo[2],
                patch["lfo_dest"], 11,
-               active=patch["lfo_dest"] != "none", color=theme.ACCENT2,
+               active=patch["lfo_dest"] != "none", color=theme.ACCENT3,
                sub="lfo dest")
         button(surface, self.hits, "lshape", lfo[3],
                patch["lfo_shape"], 11, sub="lfo shape")

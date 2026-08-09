@@ -26,7 +26,7 @@ from typing import Callable
 import pygame
 
 from rangerkit.gui import theme, touch
-from rangerkit.gui.widgets import (HitMap, button, chip, focus_ring, lcd, pad,
+from rangerkit.gui.widgets import (HitMap, button, chip, lcd, pad, pad_face,
                                    panel, rule, text, toast)
 
 from core.engine import BACKGROUND, OFF, SHOWN, STARTING, DeckFleet
@@ -394,17 +394,24 @@ class App:
                  display=True, align="right")
 
     def _draw_legend(self) -> None:
-        """Bottom encoder legend strip — always-on copy, never steals focus."""
+        """Bottom legend strip — always-on copy, never steals focus.
+
+        The copy names the controls this panel actually has. It used to read
+        "ENC1 > … ENC2 > …", inherited from the micro-rangers sheet, which is
+        drawn for a box with two rotary encoders; the RK-00pi has a touch bar,
+        two pots and one button. A legend that names controls the player
+        cannot find is worse than no legend at all.
+        """
         rect = pygame.Rect(0, self.size[1] - LEGEND_H, self.size[0], LEGEND_H)
         self.surface.fill(theme.BG_RAISED, rect)
         rule(self.surface, pygame.Rect(0, rect.y, rect.width, theme.BORDER_W))
         half = rect.width // 2
         left = pygame.Rect(8, rect.y, half - 16, rect.height)
         right = pygame.Rect(half + 4, rect.y, half - 60, rect.height)
-        text(self.surface, "ENC1 > TAP TILE · LAUNCH", left, 12, theme.TEXT,
-             bold=True, display=True, align="left")
-        text(self.surface, "ENC2 > STOP · POWER", right, 12, theme.TEXT,
-             bold=True, display=True, align="left")
+        text(self.surface, "TAP a tile to launch it", left,
+             theme.TYPE_LABEL, theme.TEXT, bold=True, align="left")
+        text(self.surface, "TAP ✕ to stop it · POWER to restart or shut down",
+             right, theme.TYPE_LABEL, theme.TEXT, bold=True, align="left")
         x1 = pygame.Rect(rect.right - 44, rect.y + 6, 36, rect.height - 12)
         panel(self.surface, x1, theme.BG_SUNKEN)
         text(self.surface, "×1", x1, 11, theme.TEXT, bold=True, display=True)
@@ -443,21 +450,29 @@ class App:
     def _draw_tile(self, index: int, name: str, cell: pygame.Rect) -> None:
         guest = self.fleet.guests[name]
         state = guest.state
-        hue = theme.part_color(index)
+        # Each Ranger owns an identity hue, but a tile is a large surface and
+        # the part colours are tuned to be *blended*, not poured. Toning here
+        # rather than in pad_face keeps the shared states matrix faithful to
+        # the design system — playing is the hue it was handed — while the
+        # deck still reads as the dark instrument the rest of the suite is.
+        badge = theme.part_color(index)
+        hue = theme.blend(theme.BG_RAISED, badge, 0.72)
         pad_state = self._pad_state(state)
+        # The tile on the panel right now is the *selected* one — cyan rule.
+        # A running-in-the-background tile is playing — coloured fill. They
+        # are separate marks because a guest is routinely both.
+        face = pad_face(pad_state, hue)
         pad(self.surface, cell, state=pad_state, hue=hue,
-            label=guest.spec.title, sub=guest.spec.tagline, chip=hue)
-        if state == SHOWN:
-            focus_ring(self.surface, cell)
+            label=guest.spec.title, sub=guest.spec.tagline, chip=badge,
+            selected=state == SHOWN)
         # Centre state mark (geometry — fonts box unicode on the appliance).
         if state in (BACKGROUND, SHOWN) and cell.height >= 100:
             mark = pygame.Rect(cell.centerx - 12, cell.centery - 4, 24, 24)
-            self._glyph_play(mark, theme.ink_for(
-                theme.blend(theme.BG_RAISED, hue, 0.72)))
+            self._glyph_play(mark, theme.ink_for(face))
         elif state == STARTING and cell.height >= 100:
             text(self.surface, "...",
                  pygame.Rect(cell.x, cell.centery - 8, cell.width, 20),
-                 16, theme.HOT, bold=True, display=True)
+                 16, theme.ink_for(face), bold=True, display=True)
         self.chrome.add(f"app:{name}", cell)
         if state != OFF:
             status = guest.note or ("ON PANEL" if state == SHOWN else "RUNNING")
@@ -473,7 +488,7 @@ class App:
     def _draw_settings_tile(self, cell: pygame.Rect) -> None:
         """Toggle which Rangers appear — same path as patchbox-setup rangers."""
         face = theme.blend(theme.BG_RAISED, theme.ACCENT, 0.28)
-        panel(self.surface, cell, face, shadow=False)
+        panel(self.surface, cell, face)
         ink = theme.ink_for(face)
         text(self.surface, "SETTINGS",
              pygame.Rect(cell.x + 8, cell.y + 20, cell.width - 16, 24),
@@ -486,7 +501,7 @@ class App:
     def _draw_power_tile(self, cell: pygame.Rect) -> None:
         """DANG home pad — destructive actions live here, never on app tiles."""
         face = theme.blend(theme.BG_RAISED, theme.DANGER, 0.40)
-        panel(self.surface, cell, face, shadow=False)
+        panel(self.surface, cell, face)
         badge = pygame.Rect(cell.x + 4, cell.y + 4, 14, 10)
         self.surface.fill(theme.DANGER, badge)
         rule(self.surface, badge, width=1)
@@ -584,7 +599,7 @@ class App:
         sheet = pygame.Rect((self.size[0] - sheet_w) // 2,
                             (self.size[1] - sheet_h) // 2,
                             sheet_w, sheet_h)
-        panel(self.surface, sheet, theme.BG, shadow=True, focus=True)
+        panel(self.surface, sheet, theme.BG, focus=True)
         head = pygame.Rect(sheet.x + pad, sheet.y + pad,
                            sheet.width - 2 * pad, 28)
         text(self.surface, "RANGERS ON LAUNCHER", head, 16, theme.TEXT,
@@ -640,7 +655,7 @@ class App:
         sheet = pygame.Rect((self.size[0] - sheet_w) // 2,
                             (self.size[1] - sheet_h) // 2,
                             sheet_w, sheet_h)
-        panel(self.surface, sheet, theme.BG, shadow=True, focus=True)
+        panel(self.surface, sheet, theme.BG, focus=True)
         head = pygame.Rect(sheet.x + pad, sheet.y + pad,
                            sheet.width - 2 * pad, header_h)
         text(self.surface, "POWER", head, 18, theme.TEXT, bold=True,
@@ -670,7 +685,7 @@ class App:
         sheet = pygame.Rect((self.size[0] - sheet_w) // 2,
                             (self.size[1] - sheet_h) // 2,
                             sheet_w, sheet_h)
-        panel(self.surface, sheet, theme.BG, shadow=True, focus=True)
+        panel(self.surface, sheet, theme.BG, focus=True)
         head = pygame.Rect(sheet.x + pad, sheet.y + pad,
                            sheet.width - 2 * pad, 28)
         ver = remote.version or remote.short_commit() or "new"

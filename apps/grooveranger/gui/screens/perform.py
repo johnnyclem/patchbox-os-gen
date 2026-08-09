@@ -21,6 +21,7 @@ STRIP_H = 22
 
 class PerformScreen(Screen):
     title = "PERFORM"
+    legend = "TAP a pad to hit it · HOLD a pad to mute the track"
 
     # --- input ----------------------------------------------------------------
     def on_tap(self, key: str) -> list:
@@ -80,18 +81,20 @@ class PerformScreen(Screen):
                 break
             view = s.pads[index]
             key = f"pad{index}"
-            if view.muted:
-                face_color = theme.DANGER
-            elif view.sounding:
-                face_color = theme.ACCENT
-            else:
-                face_color = None
+            # A muted pad dims; it does not turn red. Red is stop and delete,
+            # and a wall of red pads made a perfectly ordinary arrangement
+            # look like a rack full of faults.
+            any_solo = any(p.soloed for p in s.pads)
+            kind = ("solo" if view.soloed else
+                    "mute" if view.muted or any_solo else "neut")
             button(surface, self.hits, key, cell, view.name, 15,
-                   active=bool(view.sounding) or view.muted,
-                   color=face_color,
+                   kind=kind,
+                   active=kind != "neut" or bool(view.sounding),
+                   color=theme.ACCENT if view.sounding else None,
                    pressed=self.is_pressed(key),
                    sub="muted" if view.muted else
-                   (f"g{view.group}" if view.group else ""))
+                   ("solo" if view.soloed else
+                    (f"g{view.group}" if view.group else "")))
 
     def _rail(self, surface, rect, s) -> None:
         rows = column(rect, 4, gap=5)
@@ -125,8 +128,7 @@ class PerformScreen(Screen):
             members = [p for p in s.pads if p.group == group]
             all_muted = bool(members) and all(p.muted for p in members)
             button(surface, self.hits, f"mg{group}", groups[group - 1],
-                   f"G{group}", 13, active=all_muted,
-                   color=theme.DANGER if all_muted else None,
+                   f"G{group}", 13, kind="mute", active=all_muted,
                    sub=f"{len(members)}" if members else "—")
         info = row(rows[3], 2, gap=4)
         lcd(surface, info[0], s.kit_name[:8].upper(), size=15, label="KIT")
