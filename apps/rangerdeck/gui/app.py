@@ -537,7 +537,6 @@ class App:
 
     def _save_settings(self) -> None:
         """Persist tile list and rebuild the fleet (stop removed guests)."""
-        from core.config import deck_settings
         # Preserve suite order, only filter membership.
         wanted = [name for name, _, _ in KNOWN_APPS
                   if name in self._settings_draft]

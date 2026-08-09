@@ -1,8 +1,6 @@
 """Tile selection: override file, resolve order, save."""
 from __future__ import annotations
 
-from pathlib import Path
-
 from core.selection import KNOWN_NAMES, load_enabled, resolve_order, save_enabled
 
 
