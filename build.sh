@@ -271,6 +271,7 @@ export RK00PI_COMPANION_ADVERTISE="${RK00PI_COMPANION_ADVERTISE:-1}"
 export RK00PI_HUB_PRESET="${RK00PI_HUB_PRESET:-}"
 export RK00PI_WIDTH="${RK00PI_WIDTH:-}"
 export RK00PI_HEIGHT="${RK00PI_HEIGHT:-}"
+export RK00PI_ROTATION="${RK00PI_ROTATION:-0}"
 # ChordRanger + Ranger suite. Stages only see *exported* vars — without
 # these, ENABLE_* is empty in stage3 and every Ranger install is skipped
 # (Aug 2026 image: full-screen RK-00pi, no deck, no tiles).

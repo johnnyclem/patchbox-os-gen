@@ -528,17 +528,16 @@ hdmi_timings=400 0 70 10 60 1280 0 20 10 12 0 0 0 60 0 43000000 3
 video=HDMI-A-1:400x1280M@60
 ```
 
-**Why no `rotate=90`:** the wiki rotation works for the console, but SDL
-`kmsdrm` often still opens the 400-wide mode while the app requests 1280×400.
-That wraps each scanline three times (`1280/400`) — three distorted portrait
-strips — then the client dies and the panel goes black. Matching app size to
-the native mode is the reliable kiosk path.
+**Landscape without kernel rotate:** DRM stays **400×1280** (stable under
+kmsdrm). RK-00pi uses `[display] width=1280 height=400 rotation=90` and
+software-rotates the finished frame (`gui/orient.py`). Kernel
+`video=…,rotate=90` is still avoided — it caused three wrapped strips then black.
 
-Field-fix a card that still has rotate + 1280×400 (mount boot + root if
-possible):
+Field-fix a live card (mount boot + root if possible):
 
 ```bash
 ./scripts/fix-waveshare79-bootfs.sh /Volumes/bootfs /Volumes/rootfs
+# then reboot; if upside-down: rotation = 270 in /etc/rk00pi/config.toml
 ```
 
 Hardware: HDMI + USB touch both required; at high brightness feed 5V/2A into

@@ -23,6 +23,7 @@ if [ ! -f "${RK_SRC}/main.py" ] || [ ! -f "${RK_SRC}/deploy/rk00pi.service" ]; t
 fi
 
 # Panel size priority: explicit RK00PI_* → HyperPixel → Waveshare → HDMI
+# RK00PI_ROTATION: software orient (0/90/180/270) for kmsdrm — see gui/orient.py
 if [ -n "${RK00PI_WIDTH}" ] && [ -n "${RK00PI_HEIGHT}" ]; then
 	W="${RK00PI_WIDTH}"
 	H="${RK00PI_HEIGHT}"
@@ -36,6 +37,7 @@ else
 	W="${HDMI_WIDTH:-1280}"
 	H="${HDMI_HEIGHT:-400}"
 fi
+ROT="${RK00PI_ROTATION:-0}"
 APP_USER="${RK00PI_USER:-rk00pi}"
 PREFIX=/opt/rk00pi
 DATA_DIR=/var/lib/rk00pi
@@ -105,6 +107,7 @@ install -m 644 "${RK_SRC}/deploy/config.toml" "${ROOTFS_DIR}${CONFIG_DIR}/config
 sed -i \
 	-e "s/^width = .*/width = ${W}/" \
 	-e "s/^height = .*/height = ${H}/" \
+	-e "s/^rotation = .*/rotation = ${ROT}/" \
 	-e "s|^data_dir = .*|data_dir = \"${DATA_DIR}\"|" \
 	-e "s|^presets_dir = .*|presets_dir = \"${DATA_DIR}/presets\"|" \
 	"${ROOTFS_DIR}${CONFIG_DIR}/config.toml"
