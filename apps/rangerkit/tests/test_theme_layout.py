@@ -46,9 +46,14 @@ def test_tabs_meet_touch_minimum(size):
 
 
 def test_colorways_apply_and_report():
-    for name in ("industrial", "mono", "dusk"):
+    for name in theme.COLORWAY_NAMES:
         assert theme.apply(name) == name
-    theme.apply("industrial")
+    # "mono" and "dusk" were folded into NIGHT by the design-system pass;
+    # they still resolve, but they report the colourway actually in force
+    # rather than the name that was asked for.
+    for retired in ("mono", "dusk"):
+        assert theme.apply(retired) in theme.COLORWAY_NAMES
+    theme.apply(theme.DEFAULT_COLORWAY)
 
 
 @pytest.mark.parametrize("size", GEOMETRIES)

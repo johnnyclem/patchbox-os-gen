@@ -20,6 +20,7 @@ STEPPED = ("dens", "cplx", "chaos")
 
 class PerformScreen(Screen):
     title = "PERFORM"
+    legend = "TAP a layer to select it · HOLD a layer to mutate it now"
 
     # --- input ----------------------------------------------------------------
     def on_tap(self, key: str) -> list:

@@ -23,6 +23,7 @@ STEPPED = tuple(f"{name}{part}" for part in range(PARTS)
 
 class MixScreen(Screen):
     title = "MIX"
+    legend = "TAP MUTE to silence a part · − / + step LEVEL, PAN and CHAN"
 
     # --- input ----------------------------------------------------------------
     def on_tap(self, key: str) -> list:
@@ -101,9 +102,12 @@ class MixScreen(Screen):
         for part, line in enumerate(column(body, PARTS, gap=4)):
             view = s.parts[part]
             cells = row(line, 6, gap=3)
+            # Orange says this part is making sound; the cyan rule says it is
+            # the one the matrix on the right belongs to. Both are true at
+            # once often enough that they cannot share a channel.
             button(surface, self.hits, f"sel{part}", cells[0],
-                   f"P{part + 1}", 12, active=part == s.selected_part,
-                   color=theme.ACCENT if view.sounding else None,
+                   f"P{part + 1}", 12, active=view.sounding,
+                   color=theme.ACCENT, focus=part == s.selected_part,
                    sub=view.name[:6].lower())
             Stepper(f"lvl{part}", "LVL", f"{view.level:.2f}",
                     width=22).draw(surface, self.hits, cells[1],
@@ -119,7 +123,7 @@ class MixScreen(Screen):
                                    self._pressed, size=10)
             button(surface, self.hits, f"mute{part}", cells[5],
                    "MUTED" if view.muted else "MUTE", 10,
-                   active=view.muted, color=theme.DANGER)
+                   kind="mute", active=view.muted)
 
     def _matrix(self, surface, rect, s) -> None:
         body = self._titled(surface, rect,
@@ -128,12 +132,18 @@ class MixScreen(Screen):
         for slot, line in enumerate(column(body, SLOTS, gap=4)):
             mod = mods[slot]
             cells = row(line, 3, gap=3)
+            # A live mod slot is a route, and the design system paints routes
+            # cyan (§ROUTE: "cyan = active route"). Source and destination
+            # used to be orange and dim-orange, which spent the transport's
+            # two colours on a pair of category labels — so a patch with four
+            # mods wired up looked like four things were playing.
+            wired = mod.source != "none" and mod.dest != "none"
             button(surface, self.hits, f"src{slot}", cells[0],
-                   mod.source, 11, active=mod.source != "none",
-                   color=theme.ACCENT2, sub="source")
+                   mod.source, 11, active=wired,
+                   color=theme.ACCENT3, sub="source")
             button(surface, self.hits, f"dst{slot}", cells[1],
-                   mod.dest, 11, active=mod.dest != "none",
-                   color=theme.ACCENT, sub="dest")
+                   mod.dest, 11, active=wired,
+                   color=theme.ACCENT3, sub="dest")
             Stepper(f"amt{slot}", "AMOUNT", f"{mod.amount:+.1f}",
                     width=26).draw(surface, self.hits, cells[2],
                                    self._pressed, size=11)

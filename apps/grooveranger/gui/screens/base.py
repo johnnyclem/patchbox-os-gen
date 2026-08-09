@@ -41,6 +41,24 @@ class Screen:
     #: Shown on the tab rail.
     title = "SCREEN"
 
+    #: Permanent legend copy: what the controls on this screen do, including
+    #: the secondary action on hold. The design system puts secondary actions
+    #: on long-press and makes the legend row responsible for revealing them —
+    #: without it, "hold a pad to mute it" is a feature only its author knows
+    #: about. Copy names this panel's real controls (touch, and the Pisound
+    #: button); it does not borrow the sheet's ENC1/ENC2, which this hardware
+    #: does not have.
+    legend = ""
+
+    def legend_copy(self) -> str:
+        """The legend as it should read right now.
+
+        Screens override this when the copy depends on what is selected — the
+        sheet's rule is that the legend reflects the *focused* control, not
+        the screen in general.
+        """
+        return self.legend
+
     def __init__(self, host: Host, rect: pygame.Rect) -> None:
         self.host = host
         self.rect = rect

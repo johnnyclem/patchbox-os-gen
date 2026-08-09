@@ -20,6 +20,7 @@ STEPPED = ("root", "curveamt", "humtime", "humvel", "drop", "reps", "time",
 
 class FxScreen(Screen):
     title = "FX"
+    legend = "TAP a processor to enable it · − / + step its parameters"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

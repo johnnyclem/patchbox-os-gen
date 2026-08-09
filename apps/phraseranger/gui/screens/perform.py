@@ -20,6 +20,7 @@ STEPPED = ("bars",)
 
 class PerformScreen(Screen):
     title = "PERFORM"
+    legend = "TAP a lane to select it · HOLD a lane to clear it"
 
     # --- input ----------------------------------------------------------------
     def on_tap(self, key: str) -> list:
@@ -90,7 +91,7 @@ class PerformScreen(Screen):
                "●", 15, active=view.armed, color=theme.ACCENT2,
                display=False)
         button(surface, self.hits, f"mute{index}", mute, "M", 13,
-               active=view.muted, color=theme.DANGER)
+               kind="mute", active=view.muted)
         button(surface, self.hits, f"undo{index}", undo,
                f"↶{view.undo_depth}" if view.undo_depth else "↶", 12,
                display=False)

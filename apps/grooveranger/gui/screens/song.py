@@ -25,6 +25,7 @@ _DIV_NAMES = ("1/8", ".1/8", "1/4", "1/2")
 
 class SongScreen(Screen):
     title = "SONG"
+    legend = "TAP a pattern to chain it · − / + step the repeat count"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -135,7 +136,7 @@ class SongScreen(Screen):
                sub=f"entry {s.chain_position + 1}/{len(s.chain)}"
                if s.chain_on and s.chain else "chain idle")
         button(surface, self.hits, "wipe", controls[1], "CLEAR", 13,
-               color=theme.DANGER, sub="whole chain")
+               kind="dang", sub="whole chain")
 
     def _bus(self, surface, rect, s) -> None:
         body = self._titled(surface, rect, "MASTER BUS · internal DAC")

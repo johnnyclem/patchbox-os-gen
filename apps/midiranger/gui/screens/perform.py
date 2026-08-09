@@ -20,6 +20,7 @@ ACTIVITY_SPAN = 24.0            # counts that light a meter fully
 
 class PerformScreen(Screen):
     title = "PERFORM"
+    legend = "TAP a scene to recall it · HOLD a scene to save over it"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

@@ -20,6 +20,7 @@ PORTS_SHOWN = 5
 
 class LibraryScreen(Screen):
     title = "LIBRARY"
+    legend = "TAP a project to load it · TAP SAVE to write the current one"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

@@ -61,6 +61,7 @@ def _family_color(numeral: str):
 
 class PerformScreen(Screen):
     title = "PERFORM"
+    legend = "TAP a pad to play it · HOLD a pad to open it in CHORD"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -183,7 +184,7 @@ class PerformScreen(Screen):
             face = (theme.ACCENT if live else
                     theme.BG_PRESS if held else
                     theme.tint(_family_color(numeral), 0.18))
-            panel(surface, cell, face, shadow=not live)
+            panel(surface, cell, face)
             ink = theme.ink_for(face)
             text(surface, caption,
                  pygame.Rect(cell.x, cell.y + 6, cell.width,

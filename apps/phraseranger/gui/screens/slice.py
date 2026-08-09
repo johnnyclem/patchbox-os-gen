@@ -18,6 +18,7 @@ from rangerkit.gui.widgets import button, grid, row, section_head
 
 class SliceScreen(Screen):
     title = "SLICE"
+    legend = "TAP a slice to select it · HOLD a slice to fire it"
 
     def on_tap(self, key: str) -> list:
         s = self.snapshot

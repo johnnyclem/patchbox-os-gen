@@ -17,6 +17,7 @@ from rangerkit.gui.widgets import button, column, grid, lcd, row, \
 
 class LibraryScreen(Screen):
     title = "LIBRARY"
+    legend = "TAP a scene to recall it · HOLD a scene to save over it"
 
     def on_tap(self, key: str) -> list:
         if key.startswith("scene"):

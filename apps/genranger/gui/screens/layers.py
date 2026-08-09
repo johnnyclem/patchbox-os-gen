@@ -21,6 +21,7 @@ STEPPED = ("chan", "dens", "octlo", "octhi", "root")
 
 class LayersScreen(Screen):
     title = "LAYERS"
+    legend = "TAP MUTE or LOCK · − / + step the layer's parameters"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -172,9 +173,9 @@ class LayersScreen(Screen):
                f"{view.step_count}", 14, sub="steps")
         button(surface, self.hits, "mute", cells[1],
                "MUTED" if view.muted else "MUTE", 14,
-               active=view.muted, color=theme.ACCENT2)
+               kind="mute", active=view.muted)
         button(surface, self.hits, "lock", cells[2],
                "LOCKED" if view.locked else "LOCK", 14,
                active=view.locked, color=theme.DANGER)
         button(surface, self.hits, "off", cells[3], "REMOVE", 12,
-               color=theme.DANGER, sub="disable slot")
+               kind="dang", sub="disable slot")

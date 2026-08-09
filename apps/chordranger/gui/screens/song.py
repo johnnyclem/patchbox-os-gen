@@ -25,6 +25,7 @@ VISIBLE_BARS = 16
 
 class SongScreen(Screen):
     title = "SONG"
+    legend = "TAP a section to place it · − / + move the bar cursor"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -179,7 +180,7 @@ class SongScreen(Screen):
                color=theme.ACCENT3, pressed=self.is_pressed("write"),
                sub="HELD CHORD")
         button(surface, self.hits, "erase", cells[3], "ERASE", 14,
-               color=theme.DANGER, pressed=self.is_pressed("erase"))
+               kind="dang", pressed=self.is_pressed("erase"))
         Stepper("cur", "BAR", str(self.cursor + 1), width=30).draw(
             surface, self.hits, cells[4], self._pressed, size=14)
         Stepper("sect", "MARK",

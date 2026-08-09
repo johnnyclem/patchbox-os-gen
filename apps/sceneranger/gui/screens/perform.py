@@ -22,6 +22,7 @@ STOP_H = 34
 
 class PerformScreen(Screen):
     title = "PERFORM"
+    legend = "TAP a clip to launch it · HOLD a clip to arm or disarm it"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

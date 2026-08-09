@@ -19,6 +19,7 @@ PAGE = 8
 
 class BrowserScreen(Screen):
     title = "BROWSER"
+    legend = "TAP a preset to load it · ◂ / ▸ page through the bank"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

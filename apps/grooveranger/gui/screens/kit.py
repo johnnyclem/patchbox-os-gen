@@ -24,6 +24,7 @@ _DESTS = tuple(OUTPUTS)          # includes internal — the sampler
 
 class KitScreen(Screen):
     title = "KIT"
+    legend = "TAP a pad to select its voice · − / + step the parameters"
 
     # --- input ----------------------------------------------------------------
     def on_tap(self, key: str) -> list:
@@ -108,9 +109,12 @@ class KitScreen(Screen):
         pads = pygame.Rect(inner.x, inner.y, inner.width, pad_h)
         for index, cell in enumerate(row(pads, PADS, gap=2)):
             view = s.pads[index]
+            # Orange fill = sounding right now; cyan rule = the pad you are
+            # editing. Keeping them on different channels means you can see
+            # the selected pad fire without the selection moving.
             button(surface, self.hits, f"sel{index}", cell,
-                   view.name[:4], 10, active=index == s.selected_pad,
-                   color=theme.ACCENT if view.sounding else None,
+                   view.name[:4], 10, active=view.sounding,
+                   color=theme.ACCENT, focus=index == s.selected_pad,
                    sub="" if view.has_samples else "midi")
         body = pygame.Rect(inner.x, pads.bottom + 6, inner.width,
                            inner.bottom - pads.bottom - 6)
@@ -171,7 +175,7 @@ class KitScreen(Screen):
         route = row(lines[1], 2, gap=4)
         button(surface, self.hits, "dest", route[0],
                s.dest.replace("_", " "), 13, sub="destination",
-               active=s.dest_bound, color=theme.ACCENT)
+               active=s.dest_bound, color=theme.ACCENT3)
         Stepper("chan", "EXT CHAN", str(s.channel + 1), width=34).draw(
             surface, self.hits, route[1], self._pressed, size=13)
         lcd(surface, lines[2],

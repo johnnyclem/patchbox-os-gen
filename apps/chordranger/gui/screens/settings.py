@@ -21,6 +21,7 @@ LIST_ROWS = 5
 
 class SettingsScreen(Screen):
     title = "SET"
+    legend = "TAP a port to bind it · TAP THEME to cycle the colourway"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -147,8 +148,12 @@ class SettingsScreen(Screen):
                 continue
             active = bool(self.snapshot
                           and self.snapshot.chordset_name == sets[index])
+            # The loaded chordset is a *selection*, not a transport state, so
+            # it takes the cyan rule. It used to be a full orange fill, which
+            # on a screen with no pads at all was the only orange in sight and
+            # read as "this is playing".
             button(surface, self.hits, f"set:{index}", cell, sets[index][:16],
-                   12, active=active, color=theme.ACCENT, display=False)
+                   12, focus=active, display=False)
         styles = self.host.styles()
         for slot in range(3):
             index = (self.style_page + slot) % max(1, len(styles))
@@ -159,7 +164,7 @@ class SettingsScreen(Screen):
             active = bool(self.snapshot
                           and self.snapshot.style_name == styles[index])
             button(surface, self.hits, f"style:{index}", cell, styles[index],
-                   12, active=active, color=theme.ACCENT2, display=False)
+                   12, focus=active, display=False)
         actions = row(cells[6], 3, gap=4)
         button(surface, self.hits, "setpage", actions[0], f"SET {len(sets)}",
                11, color=theme.ACCENT3)
@@ -186,7 +191,7 @@ class SettingsScreen(Screen):
         button(surface, self.hits, "new", actions[1], "NEW", 13,
                color=theme.ACCENT3, pressed=self.is_pressed("new"))
         button(surface, self.hits, "panic", cells[6], "PANIC", 13,
-               color=theme.DANGER, pressed=self.is_pressed("panic"),
+               kind="dang", pressed=self.is_pressed("panic"),
                sub="ALL NOTES OFF")
 
     def _draw_panel(self, surface, rect) -> None:

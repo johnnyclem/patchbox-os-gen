@@ -27,6 +27,9 @@ _LOCK_HI = {"tune": 12.0, "filter": 1.0, "pan": 1.0}
 
 class SeqScreen(Screen):
     title = "SEQ"
+    legend = ("TAP a step to toggle it · "
+              "HOLD a step to select without toggling · "
+              "HOLD a track chip to solo it")
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -72,6 +75,12 @@ class SeqScreen(Screen):
         if key.startswith("st"):
             self._step = int(key[2:])       # select without toggling
             return []
+        if key.startswith("sel"):
+            # Solo. The engine has had ToggleSolo since it was written, but
+            # no control ever emitted it, so the feature was unreachable from
+            # the panel. Long-press is where the design system puts secondary
+            # actions, and the pad chip is the thing you would press.
+            return [cmd.ToggleSolo(pad=int(key[3:]))]
         return self.on_tap(key)
 
     def repeats(self, key: str) -> bool:
@@ -127,9 +136,18 @@ class SeqScreen(Screen):
         pads = pygame.Rect(inner.x, inner.y, inner.width, pad_h)
         for index, cell in enumerate(row(pads, PADS, gap=2)):
             view = s.pads[index]
+            # Three orthogonal things on one chip, so each gets its own
+            # channel: solo is a green face, mute is a dimmed one, and
+            # selection is the cyan rule. Drawing any two of them as a
+            # coloured fill made them the same shape at arm's length.
+            # Once anything is soloed the rest dim, which is the only way to
+            # see at a glance that a silent pad is silent *because* of solo.
+            any_solo = any(p.soloed for p in s.pads)
+            kind = ("solo" if view.soloed else
+                    "mute" if view.muted or any_solo else "neut")
             button(surface, self.hits, f"sel{index}", cell,
-                   view.name[:4], 10, active=index == s.selected_pad,
-                   color=theme.DANGER if view.muted else None)
+                   view.name[:4], 10, kind=kind, active=kind != "neut",
+                   focus=index == s.selected_pad)
         steps_h = max(theme.TOUCH_MIN + 8, inner.height // 4)
         steps_rect = pygame.Rect(inner.x, pads.bottom + 5, inner.width,
                                  steps_h)
@@ -207,7 +225,7 @@ class SeqScreen(Screen):
                 f"{locks['pan']:+.2f}", width=28).draw(
             surface, self.hits, bottom[2], self._pressed, size=12)
         button(surface, self.hits, "clr", bottom[3], "CLR", 12,
-               color=theme.DANGER, sub="locks")
+               kind="dang", sub="locks")
 
     def _row_tools(self, surface, rect, s) -> None:
         body = self._titled(surface, rect, "ROW + PATTERN")
@@ -223,5 +241,5 @@ class SeqScreen(Screen):
         Stepper("swg", "SWING", f"{s.swing:.0%}", width=36).draw(
             surface, self.hits, mid[1], self._pressed, size=13)
         button(surface, self.hits, "row", lines[2], "CLEAR ROW", 13,
-               color=theme.DANGER,
+               kind="dang",
                sub=s.pads[s.selected_pad].name.lower())

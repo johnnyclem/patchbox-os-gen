@@ -25,6 +25,7 @@ STEPPED = ("pulses", "rot", "temp", "leash")
 
 class MapScreen(Screen):
     title = "MAP"
+    legend = "TAP a generator to fit it · − / + step its parameters"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)

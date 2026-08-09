@@ -28,6 +28,7 @@ STEPPED = ("chin", "chout", "gate", "oct", "ratch", "prob")
 
 class ArpScreen(Screen):
     title = "ARP"
+    legend = "TAP an arp to select it · − / + step its parameters"
 
     def __init__(self, host, rect) -> None:
         super().__init__(host, rect)
@@ -143,7 +144,7 @@ class ArpScreen(Screen):
                "ON" if arp.enabled else "OFF", 14, active=arp.enabled,
                color=theme.ACCENT)
         button(surface, self.hits, "clear", on_row[1], "CLEAR", 12,
-               color=theme.DANGER)
+               kind="dang")
         button(surface, self.hits, "src", cells[1],
                (arp.source or "any").replace("_", " "), 13, sub="input")
         Stepper("chin", "CH IN",
